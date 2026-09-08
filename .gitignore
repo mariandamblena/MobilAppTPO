@@ -1,0 +1,43 @@
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Editores / IDEs ---
+.vscode/
+.idea/
+*.swp
+*~
+
+# --- Entorno / secretos ---
+.env
+.env.*
+!.env.example
+
+# --- Node (red de seguridad; cada subproyecto tiene su propio .gitignore) ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+*.log
+
+# --- Backend (Prisma / SQLite / build / uploads) ---
+backend/dist/
+backend/coverage/
+backend/uploads/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+
+# --- Mobile (Expo) ---
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+
+# --- Lockfiles (NO commitear) ---
+# El equipo resuelve dependencias desde distintos registries de npm; un package-lock.json
+# queda atado a un registry específico (URLs `resolved`) y rompería el `npm install` del resto.
+# Cada quien instala desde package.json con su propio registry.
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

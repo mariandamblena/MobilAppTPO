@@ -1,0 +1,1823 @@
+openapi: 3.0.3
+info:
+  title: Auctify API
+  version: 1.0.0
+  description: |
+    API REST para app mobile de subastas (Auctify).
+
+    ## Errores
+    Los errores de negocio devuelven el schema `Error` con un `code` del enum
+    documentado en `ErrorCode`. Cada endpoint lista los códigos posibles.
+
+    ## Tiempo real (polling)
+    El front obtiene el estado actual de la subasta en vivo mediante polling
+    sobre `GET /auctions/{id}/live-status`.
+    `live-status` soporta solicitudes condicionales mediante el contador `version`:
+    el front re-renderiza solo cuando `version` cambia respecto al valor local anterior.
+
+    ## Cambios sobre la Entrega 1
+
+    1. **Estado `scheduled`** — se agrega `scheduled` al enum de estado de subasta.
+       Ciclo de vida: `scheduled → open → closed`. Las subastas con fecha/hora futura
+       arrancan en `scheduled`.
+    2. **`basePrice` visible a cualquier usuario registrado** — cualquier cliente
+       autenticado ve `basePrice` (no hace falta ser asistente de la subasta).
+       Solo requests anónimas reciben `basePrice: null`.
+    3. **Identidad desde el JWT** — se eliminan `clientId`/`attendeeId` del body en
+       operaciones propias del usuario logueado. Se agrega `GET /auth/me` y los alias
+       `/me/...` (métricas, notificaciones, medios de pago, multas). Ver
+       `docs/decisions/ADR-003-jwt-identity.md` y `docs/03-auth-and-roles.md`.
+    4. **Endpoint de pago** — se agrega `POST /sale-records/{id}/pay`; también se
+       añaden `paymentStatus` y `paidAt` al schema `SaleRecord`.
+    5. **DNI** — el campo `document` queda explícitamente documentado como DNI en
+       `Person`, `Client` y los formularios de registro/login.
+    6. **`ErrorCode`** — se agregan `VALIDATION_ERROR` e `INSUFFICIENT_FUNDS`.
+    7. **`x-roles`** — todos los endpoints tienen la extensión `x-roles` con los roles
+       permitidos: `ANON`, `CLIENT`, `OWNER`, `ADMIN`, `SYSTEM`. Ver
+       `docs/03-auth-and-roles.md`.
+
+servers:
+  - url: http://localhost:8080/v1
+    description: Desarrollo
+
+tags:
+  - name: Auth
+  - name: Countries
+  - name: Clients
+    description: Los clientes se crean exclusivamente a través de `/auth/register`.
+  - name: Payment Methods
+  - name: Owners
+  - name: Payout Accounts
+  - name: Auctions
+  - name: Auction Session
+  - name: Auction Live Status
+  - name: Catalogs
+  - name: Items
+  - name: Bids
+  - name: Products
+  - name: Inclusion Requests
+  - name: Photos
+  - name: Insurance
+  - name: Sale Records
+  - name: Penalties
+  - name: Notifications
+  - name: Metrics
+
+security:
+  - bearerAuth: []
+
+paths:
+
+  # ─────────────── AUTH ───────────────
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      x-roles: [ANON]
+      summary: Iniciar sesión
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [document, password]
+              properties:
+                document: { type: string, description: "DNI del cliente", example: "30111222" }
+                password: { type: string, format: password, example: "Secret123!" }
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, example: jwt.token.example }
+                  user:  { $ref: '#/components/schemas/Client' }
+        '401': { description: Credenciales inválidas }
+        '403':
+          description: Cliente no admitido o suspendido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      x-roles: [ANON]
+      summary: Registro inicial del postor (etapa 1)
+      description: |
+        Alta del postor con datos personales y fotos del documento (frente y dorso).
+        El cliente queda con `admitted = false` hasta que la empresa lo verifique.
+        Al ser admitido se le envía un mail con un token para completar el registro.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [document, firstName, lastName, email, address, countryId, idCardFront, idCardBack]
+              properties:
+                document:    { type: string, description: "DNI del postulante", example: "30111222" }
+                firstName:   { type: string }
+                lastName:    { type: string }
+                email:       { type: string, format: email }
+                address:     { type: string }
+                countryId:   { type: integer }
+                idCardFront: { type: string, format: binary }
+                idCardBack:  { type: string, format: binary }
+                photo:       { type: string, format: binary }
+      responses:
+        '201':
+          description: Registro etapa 1 creado — queda pendiente de verificación
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  client:   { $ref: '#/components/schemas/Client' }
+                  nextStep:
+                    type: string
+                    example: await_admission_email
+                    description: Indica al front qué pantalla mostrar a continuación
+        '400': { description: Datos inválidos }
+        '409': { description: Documento o email ya registrado }
+
+  /auth/activate:
+    post:
+      tags: [Auth]
+      security: []
+      x-roles: [ANON]
+      summary: Activar cuenta y generar clave (etapa 2)
+      description: |
+        Tras ser admitido, el postor recibe un token por mail y completa el alta
+        seteando su password. Devuelve el JWT para evitar un login extra.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:    { type: string, example: "act_abc123" }
+                password: { type: string, format: password, minLength: 8 }
+      responses:
+        '200':
+          description: Cuenta activada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, example: jwt.token.example }
+                  user:  { $ref: '#/components/schemas/Client' }
+        '400': { description: Token inválido o expirado }
+        '409': { description: Cuenta ya activada }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      x-roles: [CLIENT, OWNER, ADMIN]
+      summary: Obtener usuario autenticado actual
+      description: |
+        Devuelve el cliente asociado al JWT del header `Authorization`.
+        Permite al front conocer su propio `clientId` y datos sin necesidad de
+        almacenarlos localmente. Ver `docs/decisions/ADR-003-jwt-identity.md`.
+      responses:
+        '200':
+          description: Cliente actual
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Client' }
+        '401': { description: Token ausente o inválido }
+
+  # ─────────────── COUNTRIES ───────────────
+
+  /countries:
+    get:
+      tags: [Countries]
+      x-roles: [ANON, CLIENT, OWNER, ADMIN]
+      summary: Listar países
+      responses:
+        '200':
+          description: Lista de países
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Country' }
+
+  # ─────────────── CLIENTS ───────────────
+
+  /clients:
+    get:
+      tags: [Clients]
+      x-roles: [ADMIN]
+      summary: Listar clientes
+      parameters:
+        - in: query
+          name: category
+          schema: { type: string, enum: [common, special, silver, gold, platinum] }
+        - in: query
+          name: admitted
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Lista de clientes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Client' }
+
+  /clients/{id}:
+    get:
+      tags: [Clients]
+      x-roles: [ADMIN]
+      summary: Obtener cliente por ID
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Cliente encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClientDetail' }
+        '404': { description: Cliente no encontrado }
+
+    patch:
+      tags: [Clients]
+      x-roles: [ADMIN]
+      summary: Actualizar cliente (o baja lógica con active=false)
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ClientUpdateRequest' }
+      responses:
+        '200':
+          description: Cliente actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Client' }
+        '404': { description: Cliente no encontrado }
+
+  /clients/{id}/metrics:
+    get:
+      tags: [Metrics]
+      x-roles: [ADMIN]
+      summary: Obtener métricas del cliente
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Métricas del usuario
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Metrics' }
+        '404': { description: Cliente no encontrado }
+
+  # ─────────────── PAYMENT METHODS ───────────────
+
+  /clients/{id}/payment-methods:
+    get:
+      tags: [Payment Methods]
+      x-roles: [CLIENT, ADMIN]
+      summary: Listar medios de pago del cliente
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Lista de medios de pago
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PaymentMethod' }
+
+    post:
+      tags: [Payment Methods]
+      x-roles: [CLIENT, ADMIN]
+      summary: Registrar nuevo medio de pago
+      description: |
+        Permite registrar cuenta bancaria (nacional o extranjera), tarjeta de crédito
+        o cheque certificado. Queda en estado `pending` hasta que la empresa lo verifica.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentMethodCreateRequest' }
+      responses:
+        '201':
+          description: Medio de pago registrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentMethod' }
+        '400': { description: Datos inválidos }
+
+  /payment-methods/{id}:
+    delete:
+      tags: [Payment Methods]
+      x-roles: [CLIENT]
+      summary: Eliminar medio de pago
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Medio eliminado }
+        '404': { description: Medio no encontrado }
+
+  /payment-methods/{id}/verify:
+    post:
+      tags: [Payment Methods]
+      x-roles: [ADMIN]
+      summary: Verificar medio de pago (uso interno empresa)
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [verified, rejected] }
+                reason: { type: string, nullable: true }
+      responses:
+        '200':
+          description: Estado actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentMethod' }
+        '404': { description: Medio no encontrado }
+
+  # ─────────────── OWNERS ───────────────
+
+  /owners:
+    get:
+      tags: [Owners]
+      x-roles: [OWNER, ADMIN]
+      summary: Listar dueños
+      responses:
+        '200':
+          description: Lista de dueños
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Owner' }
+
+    post:
+      tags: [Owners]
+      x-roles: [ADMIN]
+      summary: Crear dueño
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OwnerCreateRequest' }
+      responses:
+        '201':
+          description: Dueño creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Owner' }
+
+  /owners/{id}:
+    get:
+      tags: [Owners]
+      x-roles: [OWNER, ADMIN]
+      summary: Obtener dueño por ID
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Dueño encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Owner' }
+        '404': { description: Dueño no encontrado }
+
+  /owners/{id}/payout-accounts:
+    get:
+      tags: [Payout Accounts]
+      x-roles: [OWNER, ADMIN]
+      summary: Listar cuentas de cobro del dueño
+      description: Cuentas a la vista (incluso del exterior) donde se acreditan las ventas.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Lista de cuentas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PayoutAccount' }
+
+    post:
+      tags: [Payout Accounts]
+      x-roles: [OWNER, ADMIN]
+      summary: Declarar cuenta de cobro
+      description: La cuenta debe declararse ANTES del inicio de la subasta.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayoutAccountCreateRequest' }
+      responses:
+        '201':
+          description: Cuenta declarada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayoutAccount' }
+
+  # ─────────────── AUCTIONS ───────────────
+
+  /auctions:
+    get:
+      tags: [Auctions]
+      x-roles: [ANON, CLIENT, OWNER, ADMIN]
+      summary: Listar subastas
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [scheduled, open, closed] }
+        - in: query
+          name: category
+          schema: { type: string, enum: [common, special, silver, gold, platinum] }
+        - in: query
+          name: currency
+          schema: { type: string, enum: [ARS, USD] }
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+        - in: query
+          name: accessibleForClient
+          description: Filtra subastas accesibles para ese cliente según su categoría.
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Lista de subastas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Auction' }
+
+    post:
+      tags: [Auctions]
+      x-roles: [ADMIN]
+      summary: Crear subasta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuctionCreateRequest' }
+      responses:
+        '201':
+          description: Subasta creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Auction' }
+        '400': { description: Datos inválidos }
+
+  /auctions/{id}:
+    get:
+      tags: [Auctions]
+      x-roles: [ANON, CLIENT, OWNER, ADMIN]
+      summary: Obtener subasta por ID
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Subasta encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuctionDetail' }
+        '404': { description: Subasta no encontrada }
+
+    patch:
+      tags: [Auctions]
+      x-roles: [ADMIN]
+      summary: Actualizar subasta
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuctionUpdateRequest' }
+      responses:
+        '200':
+          description: Subasta actualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Auction' }
+        '404': { description: Subasta no encontrada }
+
+  /auctions/{id}/streaming:
+    get:
+      tags: [Auctions]
+      x-roles: [CLIENT, OWNER, ADMIN]
+      summary: Obtener URL del streaming de la subasta
+      description: Devuelve la URL del servicio externo de streaming para usuarios admitidos.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: URL del stream
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:       { type: string, format: uri }
+                  expiresAt: { type: string, format: date-time }
+        '403':
+          description: Cliente sin permisos para acceder
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { description: Subasta no encontrada }
+
+  /auctions/{id}/catalog:
+    get:
+      tags: [Catalogs]
+      x-roles: [ANON, CLIENT, OWNER, ADMIN]
+      summary: Obtener catálogo de una subasta
+      description: |
+        El catálogo es público. `basePrice` se devuelve a cualquier usuario
+        **autenticado** (cualquier categoría); no es necesario ser asistente de
+        la subasta. Para requests **anónimas** (sin token), `basePrice` será `null`.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Catálogo encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogDetail' }
+        '404': { description: Catálogo no encontrado }
+
+  /auctions/{id}/attendees:
+    get:
+      tags: [Auctions]
+      x-roles: [ADMIN]
+      summary: Listar asistentes registrados en la subasta
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Lista de asistentes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Attendee' }
+        '404': { description: Subasta no encontrada }
+
+    post:
+      tags: [Auctions]
+      x-roles: [CLIENT, ADMIN]
+      summary: Registrar cliente como asistente/postor en subasta
+      description: |
+        El `bidderNumber` se asigna automáticamente de forma secuencial dentro de cada subasta.
+        El cliente logueado se registra a sí mismo (identidad tomada del token).
+        Solo un `ADMIN` puede registrar a otro cliente pasando `clientId` en el body.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                clientId:
+                  type: integer
+                  example: 21
+                  description: "Solo para ADMIN: ID del cliente a registrar. Omitir en auto-registro (se toma del token)."
+      responses:
+        '201':
+          description: Asistente registrado (bidderNumber asignado automáticamente)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attendee' }
+        '400': { description: Datos inválidos }
+        '403':
+          description: |
+            Códigos posibles: `NOT_ADMITTED`, `CATEGORY_INSUFFICIENT`,
+            `NO_VERIFIED_PAYMENT_METHOD`, `CLIENT_BLOCKED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409': { description: Cliente ya registrado en la subasta }
+
+  # ─────────────── AUCTION SESSION ───────────────
+
+  /auctions/{id}/connect:
+    post:
+      tags: [Auction Session]
+      x-roles: [CLIENT]
+      summary: Conectarse en vivo a una subasta
+      description: |
+        Inicia una sesión activa. Un cliente NO puede tener más de una sesión
+        activa simultánea. La identidad del cliente se obtiene del JWT; no se
+        envía `clientId` en el body.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuctionSession' }
+        '403':
+          description: |
+            Códigos: `NOT_ADMITTED`, `CATEGORY_INSUFFICIENT`,
+            `NO_VERIFIED_PAYMENT_METHOD`, `CLIENT_BLOCKED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Código `ALREADY_CONNECTED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auctions/{id}/disconnect:
+    post:
+      tags: [Auction Session]
+      x-roles: [CLIENT]
+      summary: Desconectarse de una subasta
+      description: La identidad del cliente se obtiene del JWT; no se envía `clientId` en el body.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Sesión cerrada }
+        '404': { description: Sesión no encontrada }
+
+  # ─────────────── AUCTION LIVE STATUS (POLLING) ───────────────
+
+  /auctions/{id}/live-status:
+    get:
+      tags: [Auction Live Status]
+      x-roles: [CLIENT, ADMIN]
+      summary: Estado en vivo de la subasta (para polling)
+      description: |
+        Endpoint para polling cada 2–3 segundos. Devuelve el estado actual:
+        item activo, mejor oferta, conectados, etc.
+
+        `version` es un contador incremental que cambia con cada evento.
+        El front compara con su valor local y solo re-renderiza si cambió.
+
+        `youWereOutbid` se calcula a partir del JWT del request; no se envía
+        `clientId` como query param.
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+      responses:
+        '200':
+          description: Estado actual de la subasta
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuctionLiveStatus' }
+        '403':
+          description: Cliente no conectado a la subasta
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404': { description: Subasta no encontrada }
+
+  # ─────────────── ITEMS ───────────────
+
+  /items:
+    get:
+      tags: [Items]
+      x-roles: [ANON, CLIENT, OWNER, ADMIN]
+      summary: Listar items de catálogo
+      parameters:
+        - in: query
+          name: catalogId
+          schema: { type: integer }
+        - in: query
+          name: auctionId
+          description: Atajo para filtrar items por subasta (resuelve catalogId internamente)
+          schema: { type: integer }
+        - in: query
+          name: auctioned
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Lista de items
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CatalogItem' }
+
+    post:
+      tags: [Items]
+      x-roles: [ADMIN]
+      summary: Crear item de catálogo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CatalogItemCreateRequest' }
+      responses:
+        '201':
+          description: Item creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogItem' }
+
+  /items/{id}:
+    get:
+      tags: [Items]
+      x-roles: [ANON, CLIENT, OWNER, ADMIN]
+      summary: Obtener item por ID
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Item encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CatalogItemDetail' }
+        '404': { description: Item no encontrado }
+
+  /items/{id}/bids:
+    get:
+      tags: [Bids]
+      x-roles: [ANON, CLIENT, OWNER, ADMIN]
+      summary: Obtener historial de pujos de un item
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Historial de pujos en orden cronológico
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Bid' }
+        '404': { description: Item no encontrado }
+
+    post:
+      tags: [Bids]
+      x-roles: [CLIENT]
+      summary: Crear pujo para un item
+      description: |
+        **Reglas de validación:**
+        1. El cliente debe estar conectado a la subasta del item.
+        2. Debe tener al menos un medio de pago verificado.
+        3. `amount` >= bestBid + 1% del precio base.
+        4. `amount` <= lastBid + 20% del precio base.
+        5. Reglas 3 y 4 **no aplican** a categorías `gold` y `platinum`.
+        6. Si el medio de pago es cheque certificado, la suma de compras no puede superar el monto del cheque.
+        7. `paymentMethodId` debe pertenecer al cliente del token; si no → 403 `PAYMENT_METHOD_NOT_OWNED`.
+
+        El servidor resuelve el `attendeeId` a partir del `clientId` del JWT y el `auctionId` del ítem.
+        El front **no envía `attendeeId`**.
+
+        **Concurrencia:** enviar header `Idempotency-Key`. El servidor no acepta
+        otro pujo del mismo asistente hasta confirmar el anterior.
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, paymentMethodId]
+              properties:
+                amount:          { type: number, format: double, example: 15100 }
+                paymentMethodId: { type: integer, example: 12 }
+      responses:
+        '201':
+          description: Pujo registrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Bid' }
+        '400': { description: Datos inválidos }
+        '403':
+          description: |
+            Códigos: `NO_VERIFIED_PAYMENT_METHOD`, `PAYMENT_METHOD_NOT_OWNED`,
+            `NOT_CONNECTED`, `CATEGORY_INSUFFICIENT`, `CLIENT_BLOCKED`, `CHECK_LIMIT_EXCEEDED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: |
+            Código `BID_SUPERSEDED`. El item fue actualizado por otro pujo.
+            Refrescar y reintentar.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: |
+            Código `BID_OUT_OF_RANGE`. `details` contiene `minAllowed` y `maxAllowed`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ─────────────── PRODUCTS ───────────────
+
+  /products:
+    get:
+      tags: [Products]
+      x-roles: [OWNER, ADMIN]
+      summary: Listar productos
+      parameters:
+        - in: query
+          name: ownerId
+          schema: { type: integer }
+        - in: query
+          name: available
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Lista de productos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Product' }
+
+    post:
+      tags: [Products]
+      x-roles: [OWNER, ADMIN]
+      summary: Crear producto (o draft para solicitud de inclusión)
+      description: |
+        Si se crea como draft para inclusión, `available` será `false` hasta
+        que la empresa lo acepte.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductCreateRequest' }
+      responses:
+        '201':
+          description: Producto creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+
+  /products/{id}:
+    get:
+      tags: [Products]
+      x-roles: [OWNER, ADMIN]
+      summary: Obtener producto por ID
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Producto encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDetail' }
+        '404': { description: Producto no encontrado }
+
+    patch:
+      tags: [Products]
+      x-roles: [OWNER, ADMIN]
+      summary: Actualizar producto
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProductUpdateRequest' }
+      responses:
+        '200':
+          description: Producto actualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Product' }
+        '404': { description: Producto no encontrado }
+
+  /products/{id}/location:
+    get:
+      tags: [Products]
+      x-roles: [OWNER, ADMIN]
+      summary: Obtener ubicación física (depósito) del producto
+      description: Visible para el dueño del producto.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Ubicación encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductLocation' }
+        '404': { description: Producto no encontrado o sin ubicación }
+
+  /products/{id}/photos:
+    get:
+      tags: [Photos]
+      x-roles: [OWNER, ADMIN]
+      summary: Obtener fotos de un producto
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Lista de fotos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Photo' }
+        '404': { description: Producto no encontrado }
+
+    post:
+      tags: [Photos]
+      x-roles: [OWNER, ADMIN]
+      summary: Agregar foto a producto
+      description: Para solicitudes de inclusión se requieren al menos 6 fotos.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [photo]
+              properties:
+                photo: { type: string, format: binary }
+      responses:
+        '201':
+          description: Foto cargada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Photo' }
+
+  # ─────────────── INCLUSION REQUESTS ───────────────
+
+  /inclusion-requests:
+    get:
+      tags: [Inclusion Requests]
+      x-roles: [OWNER, ADMIN]
+      summary: Listar solicitudes de inclusión de bienes
+      parameters:
+        - in: query
+          name: ownerId
+          schema: { type: integer }
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, under_inspection, accepted, rejected, proposal_sent, proposal_rejected]
+      responses:
+        '200':
+          description: Lista de solicitudes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InclusionRequest' }
+
+    post:
+      tags: [Inclusion Requests]
+      x-roles: [OWNER, ADMIN]
+      summary: Solicitar inclusión de un bien en futuras subastas
+      description: |
+        Flujo:
+        1. Crear producto draft: `POST /products` con `available: false`.
+        2. Subir >= 6 fotos: `POST /products/{id}/photos`.
+        3. Crear solicitud con el `productId` del draft.
+        4. Empresa inspecciona: `POST /inclusion-requests/{id}/inspection`.
+        5. Dueño acepta o rechaza propuesta: `POST /inclusion-requests/{id}/owner-response`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InclusionRequestCreateRequest' }
+      responses:
+        '201':
+          description: Solicitud creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InclusionRequest' }
+        '400':
+          description: |
+            Códigos: `MISSING_PHOTOS` (< 6 fotos), `DECLARATION_REQUIRED`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /inclusion-requests/{id}:
+    get:
+      tags: [Inclusion Requests]
+      summary: Obtener solicitud por ID
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Solicitud encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InclusionRequest' }
+        '404': { description: No encontrada }
+
+  /inclusion-requests/{id}/inspection:
+    post:
+      tags: [Inclusion Requests]
+      summary: Registrar resultado de inspección (uso empresa)
+      description: |
+        Si el resultado es `rejected`, el bien se devuelve al dueño con cargo.
+        El campo `returnShippingCost` registra el costo de esa devolución.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [result]
+              properties:
+                result:             { type: string, enum: [accepted, rejected] }
+                rejectionReason:    { type: string, nullable: true }
+                returnShippingCost: { type: number, format: double, nullable: true, description: "Costo de devolución con cargo al dueño (solo si rejected)" }
+                basePrice:          { type: number, format: double, nullable: true }
+                commission:         { type: number, format: double, nullable: true }
+                proposedAuctionId:  { type: integer, nullable: true }
+      responses:
+        '200':
+          description: Inspección registrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InclusionRequest' }
+
+  /inclusion-requests/{id}/owner-response:
+    post:
+      tags: [Inclusion Requests]
+      summary: Aceptación o rechazo de la propuesta por parte del dueño
+      description: |
+        Si el dueño rechaza la propuesta (`accepted: false`), se procede a la
+        devolución del bien con cargo. La respuesta incluye `returnShippingCost`
+        con el costo estimado de devolución.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accepted]
+              properties:
+                accepted: { type: boolean }
+                reason:   { type: string, nullable: true }
+      responses:
+        '200':
+          description: Respuesta registrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InclusionRequest' }
+
+  # ─────────────── INSURANCE ───────────────
+
+  /insurance/{policyNumber}:
+    get:
+      tags: [Insurance]
+      summary: Obtener seguro por número de póliza
+      parameters:
+        - in: path
+          name: policyNumber
+          required: true
+          schema: { type: string }
+          example: "POL-2026-0001"
+      responses:
+        '200':
+          description: Seguro encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Insurance' }
+        '404': { description: Seguro no encontrado }
+
+  /insurance/{policyNumber}/coverage-increase:
+    post:
+      tags: [Insurance]
+      summary: Solicitar aumento de cobertura de la póliza
+      description: |
+        El dueño del bien puede aumentar el valor de la póliza pagando la
+        diferencia del premio. La solicitud se registra y se deriva a la
+        compañía aseguradora. El campo `newAmount` debe ser mayor al importe
+        actual de la póliza.
+      parameters:
+        - in: path
+          name: policyNumber
+          required: true
+          schema: { type: string }
+          example: "POL-2026-0001"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newAmount]
+              properties:
+                newAmount:
+                  type: number
+                  format: double
+                  description: Nuevo importe deseado para la póliza (debe ser mayor al actual)
+                  example: 75000
+      responses:
+        '200':
+          description: Solicitud de aumento registrada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  policyNumber:   { type: string, example: "POL-2026-0001" }
+                  previousAmount: { type: number, format: double, example: 50000 }
+                  newAmount:      { type: number, format: double, example: 75000 }
+                  premiumDelta:   { type: number, format: double, description: "Diferencia de premio a pagar", example: 1250 }
+                  status:         { type: string, enum: [pending, confirmed], example: pending }
+        '400': { description: newAmount no es mayor al importe actual }
+        '404': { description: Póliza no encontrada }
+
+  # ─────────────── SALE RECORDS ───────────────
+
+  /sale-records:
+    get:
+      tags: [Sale Records]
+      summary: Listar registros de venta
+      parameters:
+        - in: query
+          name: auctionId
+          schema: { type: integer }
+        - in: query
+          name: clientId
+          schema: { type: integer }
+        - in: query
+          name: ownerId
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Lista de registros
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SaleRecord' }
+
+    post:
+      tags: [Sale Records]
+      summary: Registrar resultado de una venta (uso interno del sistema)
+      description: |
+        Invocado por el sistema al confirmarse la venta, NO por el cliente.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaleRecordCreateRequest' }
+      responses:
+        '201':
+          description: Registro creado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaleRecord' }
+
+  /sale-records/{id}/shipping:
+    patch:
+      tags: [Sale Records]
+      summary: Elegir envío o retiro en persona
+      description: Si elige retiro, pierde cobertura del seguro.
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pickupInPerson]
+              properties:
+                pickupInPerson:  { type: boolean }
+                shippingAddress: { type: string, nullable: true, description: "Requerido si pickupInPerson es false" }
+      responses:
+        '200':
+          description: Modalidad registrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaleRecord' }
+        '404': { description: Registro no encontrado }
+
+  # ─────────────── PENALTIES ───────────────
+
+  /clients/{id}/penalties:
+    get:
+      tags: [Penalties]
+      summary: Listar multas del cliente
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Lista de multas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Penalty' }
+
+  /penalties:
+    post:
+      tags: [Penalties]
+      summary: Generar multa por incumplimiento de pago (uso sistema)
+      description: 10% del valor ofertado, bloquea al cliente hasta su pago.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PenaltyCreateRequest' }
+      responses:
+        '201':
+          description: Multa creada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Penalty' }
+
+  /penalties/{id}/pay:
+    post:
+      tags: [Penalties]
+      summary: Marcar multa como pagada
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '200':
+          description: Multa pagada, cliente desbloqueado si no hay otras pendientes
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Penalty' }
+
+  # ─────────────── NOTIFICATIONS ───────────────
+
+  /clients/{id}/notifications:
+    get:
+      tags: [Notifications]
+      summary: Listar notificaciones del cliente
+      parameters:
+        - { $ref: '#/components/parameters/IdPath' }
+        - in: query
+          name: unreadOnly
+          description: Si es true, devuelve solo no leídas (útil para badge)
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Lista de notificaciones
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Notification' }
+
+  /notifications/{id}/read:
+    post:
+      tags: [Notifications]
+      summary: Marcar notificación como leída
+      parameters: [{ $ref: '#/components/parameters/IdPath' }]
+      responses:
+        '204': { description: Notificación marcada como leída }
+
+# ═══════════════════ COMPONENTS ═══════════════════
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    IdPath:
+      in: path
+      name: id
+      required: true
+      schema: { type: integer }
+      example: 1
+
+  schemas:
+
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Código de error de negocio (ver ErrorCode)
+          example: BID_OUT_OF_RANGE
+        message:
+          type: string
+          example: "El importe debe estar entre 15.100 y 17.000"
+        details:
+          type: object
+          additionalProperties: true
+
+    ErrorCode:
+      type: string
+      description: Enum de códigos de error de negocio
+      enum:
+        - NOT_ADMITTED
+        - CATEGORY_INSUFFICIENT
+        - NO_VERIFIED_PAYMENT_METHOD
+        - CLIENT_BLOCKED
+        - ACCOUNT_ALREADY_ACTIVATED
+        - INVALID_TOKEN
+        - BID_OUT_OF_RANGE
+        - BID_SUPERSEDED
+        - PAYMENT_METHOD_NOT_OWNED
+        - CHECK_LIMIT_EXCEEDED
+        - NOT_CONNECTED
+        - ALREADY_CONNECTED
+        - MISSING_PHOTOS
+        - DECLARATION_REQUIRED
+        - DUPLICATE_ENTRY
+        - RESOURCE_NOT_FOUND
+
+    Country:
+      type: object
+      properties:
+        id:           { type: integer, example: 32 }
+        name:         { type: string,  example: Argentina }
+        shortName:    { type: string,  nullable: true, example: AR }
+        capital:      { type: string,  example: Buenos Aires }
+        nationality:  { type: string,  example: Argentina }
+        languages:    { type: string,  example: Español }
+
+    Person:
+      type: object
+      properties:
+        id:        { type: integer, example: 10 }
+        document:  { type: string,  example: "30111222" }
+        name:      { type: string,  example: Juan Pérez }
+        address:   { type: string,  nullable: true, example: Av. Santa Fe 1234 }
+        active:    { type: boolean,  example: true }
+        photoUrl:  { type: string,  nullable: true, example: https://cdn.auctify.com/persons/10.jpg }
+
+    Client:
+      allOf:
+        - $ref: '#/components/schemas/Person'
+        - type: object
+          properties:
+            email:                    { type: string, format: email, nullable: true }
+            countryId:                { type: integer, nullable: true, example: 32 }
+            admitted:                 { type: boolean, example: true }
+            category:                 { type: string, enum: [common, special, silver, gold, platinum] }
+            verifierId:               { type: integer, example: 3 }
+            hasVerifiedPaymentMethod: { type: boolean, example: true }
+            blocked:                  { type: boolean, example: false }
+
+    ClientDetail:
+      allOf:
+        - $ref: '#/components/schemas/Client'
+        - type: object
+          properties:
+            country: { $ref: '#/components/schemas/Country' }
+            paymentMethods:
+              type: array
+              items: { $ref: '#/components/schemas/PaymentMethod' }
+
+    ClientUpdateRequest:
+      type: object
+      properties:
+        name:     { type: string }
+        address:  { type: string }
+        email:    { type: string, format: email }
+        active:   { type: boolean }
+        category: { type: string, enum: [common, special, silver, gold, platinum] }
+        admitted: { type: boolean }
+
+    Metrics:
+      type: object
+      properties:
+        auctionsAttended: { type: integer, example: 12 }
+        auctionsWon:      { type: integer, example: 3 }
+        totalBidAmount:   { type: number, format: double, example: 45000 }
+        totalPaidAmount:  { type: number, format: double, example: 38000 }
+        byCategory:
+          type: array
+          items:
+            type: object
+            properties:
+              category: { type: string, enum: [common, special, silver, gold, platinum] }
+              attended: { type: integer }
+              won:      { type: integer }
+
+    PaymentMethod:
+      type: object
+      properties:
+        id:             { type: integer }
+        clientId:       { type: integer }
+        type:           { type: string, enum: [bank_account, credit_card, certified_check] }
+        currency:       { type: string, enum: [ARS, USD] }
+        detail:         { type: string }
+        bank:           { type: string, nullable: true }
+        countryId:      { type: integer, nullable: true }
+        reservedAmount: { type: number, format: double, nullable: true }
+        status:         { type: string, enum: [pending, verified, rejected] }
+
+    PaymentMethodCreateRequest:
+      type: object
+      required: [type, currency, detail]
+      properties:
+        type:           { type: string, enum: [bank_account, credit_card, certified_check] }
+        currency:       { type: string, enum: [ARS, USD] }
+        detail:         { type: string }
+        bank:           { type: string }
+        countryId:      { type: integer }
+        reservedAmount: { type: number, format: double }
+
+    Owner:
+      allOf:
+        - $ref: '#/components/schemas/Person'
+        - type: object
+          properties:
+            countryId:             { type: integer, nullable: true }
+            financialVerification: { type: boolean }
+            judicialVerification:  { type: boolean }
+            riskRating:            { type: integer, enum: [1,2,3,4,5,6] }
+            verifierId:            { type: integer }
+
+    OwnerCreateRequest:
+      type: object
+      required: [document, name, verifierId]
+      properties:
+        document:              { type: string }
+        name:                  { type: string }
+        address:               { type: string }
+        active:                { type: boolean, default: true }
+        countryId:             { type: integer }
+        financialVerification: { type: boolean }
+        judicialVerification:  { type: boolean }
+        riskRating:            { type: integer, enum: [1,2,3,4,5,6] }
+        verifierId:            { type: integer }
+
+    PayoutAccount:
+      type: object
+      properties:
+        id:            { type: integer }
+        ownerId:       { type: integer }
+        bank:          { type: string }
+        countryId:     { type: integer, nullable: true }
+        currency:      { type: string, enum: [ARS, USD] }
+        cbuOrIban:     { type: string }
+        accountHolder: { type: string }
+        declaredAt:    { type: string, format: date-time }
+
+    PayoutAccountCreateRequest:
+      type: object
+      required: [bank, currency, cbuOrIban, accountHolder]
+      properties:
+        bank:          { type: string }
+        countryId:     { type: integer }
+        currency:      { type: string, enum: [ARS, USD] }
+        cbuOrIban:     { type: string }
+        accountHolder: { type: string }
+
+    Auction:
+      type: object
+      properties:
+        id:                { type: integer, example: 12 }
+        startsAt:          { type: string, format: date-time, example: "2026-06-20T18:30:00-03:00" }
+        status:            { type: string, enum: [open, closed] }
+        currency:          { type: string, enum: [ARS, USD] }
+        auctioneerId:      { type: integer, nullable: true, example: 7 }
+        location:          { type: string, nullable: true, example: "Salón Central, CABA" }
+        attendeeCapacity:  { type: integer, nullable: true, example: 100 }
+        hasWarehouse:      { type: boolean }
+        ownSecurity:       { type: boolean }
+        category:          { type: string, enum: [common, special, silver, gold, platinum] }
+        streamingUrl:      { type: string, nullable: true, format: uri }
+        isCollection:      { type: boolean }
+        collectionName:    { type: string, nullable: true }
+
+    AuctionDetail:
+      allOf:
+        - $ref: '#/components/schemas/Auction'
+        - type: object
+          properties:
+            catalogId:      { type: integer, nullable: true, example: 5 }
+            itemCount:      { type: integer }
+            attendeeCount:  { type: integer }
+
+    AuctionCreateRequest:
+      type: object
+      required: [startsAt, status, category, currency]
+      properties:
+        startsAt:         { type: string, format: date-time }
+        status:           { type: string, enum: [open, closed] }
+        currency:         { type: string, enum: [ARS, USD] }
+        auctioneerId:     { type: integer }
+        location:         { type: string }
+        attendeeCapacity: { type: integer }
+        hasWarehouse:     { type: boolean, default: false }
+        ownSecurity:      { type: boolean, default: false }
+        category:         { type: string, enum: [common, special, silver, gold, platinum] }
+        isCollection:     { type: boolean, default: false }
+        collectionName:   { type: string }
+
+    AuctionUpdateRequest:
+      type: object
+      properties:
+        startsAt:         { type: string, format: date-time }
+        status:           { type: string, enum: [open, closed] }
+        location:         { type: string }
+        attendeeCapacity: { type: integer }
+        hasWarehouse:     { type: boolean }
+        ownSecurity:      { type: boolean }
+        category:         { type: string, enum: [common, special, silver, gold, platinum] }
+        streamingUrl:     { type: string, format: uri }
+
+    AuctionSession:
+      type: object
+      properties:
+        id:        { type: integer }
+        clientId:  { type: integer }
+        auctionId: { type: integer }
+        startedAt: { type: string, format: date-time }
+        active:    { type: boolean }
+
+    AuctionLiveStatus:
+      type: object
+      properties:
+        version:
+          type: integer
+          description: Contador incremental — cambia con cada evento
+          example: 347
+        auctionId:      { type: integer, example: 12 }
+        auctionStatus:  { type: string, enum: [open, closed] }
+        connectedCount: { type: integer, example: 42 }
+        currentItem:
+          type: object
+          nullable: true
+          description: Item que se está subastando (null si no empezó o terminó)
+          properties:
+            itemId:             { type: integer, example: 31 }
+            productId:          { type: integer, example: 50 }
+            catalogDescription: { type: string, example: "Reloj antiguo de bolsillo" }
+            basePrice:          { type: number, format: double, example: 10000 }
+            bestBid:            { type: number, format: double, nullable: true, example: 15100 }
+            bestBidBidderNumber: { type: integer, nullable: true, example: 12 }
+            minBidAllowed:      { type: number, format: double, nullable: true }
+            maxBidAllowed:      { type: number, format: double, nullable: true, description: "Null para gold/platinum" }
+            bidCount:           { type: integer, example: 7 }
+        youWereOutbid:
+          type: boolean
+          description: True si el cliente fue superado (requiere query param clientId)
+        lastEvent:
+          type: object
+          nullable: true
+          properties:
+            type:
+              type: string
+              enum: [new_bid, item_opened, item_closed, item_sold, item_unsold, auction_ended]
+            timestamp: { type: string, format: date-time }
+            data:      { type: object, additionalProperties: true }
+        updatedAt: { type: string, format: date-time }
+
+    Catalog:
+      type: object
+      properties:
+        id:            { type: integer, example: 8 }
+        description:   { type: string, example: "Catálogo de arte contemporáneo" }
+        auctionId:     { type: integer, nullable: true, example: 12 }
+        responsibleId: { type: integer, example: 4 }
+
+    CatalogDetail:
+      allOf:
+        - $ref: '#/components/schemas/Catalog'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/CatalogItem' }
+
+    CatalogItem:
+      type: object
+      properties:
+        id:        { type: integer, example: 31 }
+        catalogId: { type: integer, example: 8 }
+        productId: { type: integer, example: 50 }
+        basePrice:
+          type: number
+          format: double
+          nullable: true
+          description: Solo visible si el cliente está registrado como asistente
+          example: 10000
+        commission: { type: number, format: double, example: 1000 }
+        auctioned:  { type: boolean }
+
+    CatalogItemDetail:
+      allOf:
+        - $ref: '#/components/schemas/CatalogItem'
+        - type: object
+          properties:
+            productDetail: { $ref: '#/components/schemas/ProductDetail' }
+            bestBid:       { type: number, format: double, nullable: true, example: 15100 }
+            minBidAllowed: { type: number, format: double, nullable: true }
+            maxBidAllowed: { type: number, format: double, nullable: true, description: "Null para gold/platinum" }
+
+    CatalogItemCreateRequest:
+      type: object
+      required: [catalogId, productId, basePrice, commission]
+      properties:
+        catalogId:  { type: integer }
+        productId:  { type: integer }
+        basePrice:  { type: number, format: double }
+        commission: { type: number, format: double }
+        auctioned:  { type: boolean, default: false }
+
+    Attendee:
+      type: object
+      properties:
+        id:           { type: integer }
+        bidderNumber:
+          type: integer
+          description: Asignado automáticamente de forma secuencial dentro de cada subasta
+        clientId:     { type: integer }
+        auctionId:    { type: integer }
+
+    Bid:
+      type: object
+      properties:
+        id:              { type: integer, example: 91 }
+        attendeeId:      { type: integer, example: 45 }
+        itemId:          { type: integer, example: 31 }
+        amount:          { type: number, format: double, example: 15100 }
+        winner:          { type: boolean, default: false }
+        timestamp:       { type: string, format: date-time }
+        paymentMethodId: { type: integer }
+
+    Product:
+      type: object
+      properties:
+        id:                  { type: integer, example: 50 }
+        date:                { type: string, format: date, nullable: true }
+        available:           { type: boolean }
+        catalogDescription:  { type: string, nullable: true, example: "Reloj antiguo de bolsillo" }
+        fullDescription:     { type: string, example: "https://cdn.auctify.com/docs/product-50.pdf" }
+        reviewerId:          { type: integer, example: 2 }
+        ownerId:             { type: integer, example: 18 }
+        insurancePolicy:     { type: string, nullable: true, example: "POL-2026-0001" }
+        pieceCount:          { type: integer, example: 18 }
+        artist:              { type: string, nullable: true }
+        historicalDate:      { type: string, nullable: true }
+        history:             { type: string, nullable: true }
+
+    ProductDetail:
+      allOf:
+        - $ref: '#/components/schemas/Product'
+        - type: object
+          properties:
+            photos:
+              type: array
+              items: { $ref: '#/components/schemas/Photo' }
+            insuranceDetail:
+              allOf:
+                - $ref: '#/components/schemas/Insurance'
+              nullable: true
+            location:
+              allOf:
+                - $ref: '#/components/schemas/ProductLocation'
+              nullable: true
+
+    ProductCreateRequest:
+      type: object
+      required: [fullDescription, reviewerId, ownerId]
+      properties:
+        date:               { type: string, format: date }
+        available:          { type: boolean, default: true }
+        catalogDescription: { type: string }
+        fullDescription:    { type: string }
+        reviewerId:         { type: integer }
+        ownerId:            { type: integer }
+        insurancePolicy:    { type: string }
+        pieceCount:         { type: integer, default: 1 }
+        artist:             { type: string }
+        historicalDate:     { type: string }
+        history:            { type: string }
+
+    ProductUpdateRequest:
+      type: object
+      properties:
+        date:               { type: string, format: date }
+        available:          { type: boolean }
+        catalogDescription: { type: string }
+        fullDescription:    { type: string }
+        reviewerId:         { type: integer }
+        insurancePolicy:    { type: string }
+        pieceCount:         { type: integer }
+        artist:             { type: string }
+        historicalDate:     { type: string }
+        history:            { type: string }
+
+    ProductLocation:
+      type: object
+      properties:
+        productId:  { type: integer }
+        warehouse:  { type: string, example: "Depósito Pilar - Estante B12" }
+        address:    { type: string }
+        receivedAt: { type: string, format: date-time }
+
+    Photo:
+      type: object
+      properties:
+        id:        { type: integer, example: 100 }
+        productId: { type: integer, example: 50 }
+        photoUrl:  { type: string, example: "https://cdn.auctify.com/products/50/photo-100.jpg" }
+
+    InclusionRequest:
+      type: object
+      properties:
+        id:                  { type: integer }
+        ownerId:             { type: integer }
+        productId:           { type: integer }
+        itemDescription:     { type: string }
+        ownershipDeclared:   { type: boolean }
+        legalityDeclared:    { type: boolean }
+        status:
+          type: string
+          enum: [pending, under_inspection, accepted, rejected, proposal_sent, proposal_rejected]
+        rejectionReason:     { type: string, nullable: true }
+        proposedBasePrice:   { type: number, format: double, nullable: true }
+        proposedCommission:  { type: number, format: double, nullable: true }
+        proposedAuctionId:   { type: integer, nullable: true }
+        returnShippingCost:  { type: number, format: double, nullable: true, description: "Costo de devolución con cargo al dueño (si fue rechazado o si el dueño rechazó la propuesta)" }
+        createdAt:           { type: string, format: date-time }
+
+    InclusionRequestCreateRequest:
+      type: object
+      required: [ownerId, productId, itemDescription, ownershipDeclared, legalityDeclared]
+      properties:
+        ownerId:           { type: integer }
+        productId:         { type: integer, description: "ID del producto draft (debe tener >= 6 fotos)" }
+        itemDescription:   { type: string }
+        ownershipDeclared: { type: boolean, description: "Debe ser true" }
+        legalityDeclared:  { type: boolean, description: "Debe ser true" }
+        artist:            { type: string }
+        historicalDate:    { type: string }
+        history:           { type: string }
+
+    Insurance:
+      type: object
+      properties:
+        policyNumber:   { type: string, example: "POL-2026-0001" }
+        company:        { type: string, example: Allianz }
+        combinedPolicy: { type: boolean }
+        amount:         { type: number, format: double, example: 50000 }
+
+    SaleRecord:
+      type: object
+      properties:
+        id:               { type: integer }
+        auctionId:        { type: integer }
+        ownerId:          { type: integer }
+        productId:        { type: integer }
+        clientId:         { type: integer }
+        amount:           { type: number, format: double }
+        commission:       { type: number, format: double }
+        shippingCost:     { type: number, format: double, nullable: true }
+        pickupInPerson:   { type: boolean }
+        shippingAddress:  { type: string, nullable: true }
+        paymentMethodId:  { type: integer }
+        boughtByCompany:  { type: boolean }
+
+    SaleRecordCreateRequest:
+      type: object
+      required: [auctionId, ownerId, productId, clientId, amount, commission]
+      properties:
+        auctionId:       { type: integer }
+        ownerId:         { type: integer }
+        productId:       { type: integer }
+        clientId:        { type: integer }
+        amount:          { type: number, format: double }
+        commission:      { type: number, format: double }
+        shippingCost:    { type: number, format: double }
+        pickupInPerson:  { type: boolean, default: false }
+        paymentMethodId: { type: integer }
+
+    Penalty:
+      type: object
+      properties:
+        id:        { type: integer }
+        clientId:  { type: integer }
+        auctionId: { type: integer }
+        itemId:    { type: integer }
+        amount:    { type: number, format: double }
+        status:    { type: string, enum: [pending, paid] }
+        createdAt: { type: string, format: date-time }
+        paidAt:    { type: string, format: date-time, nullable: true }
+
+    PenaltyCreateRequest:
+      type: object
+      required: [clientId, auctionId, itemId, amount]
+      properties:
+        clientId:  { type: integer }
+        auctionId: { type: integer }
+        itemId:    { type: integer }
+        amount:    { type: number, format: double }
+
+    Notification:
+      type: object
+      properties:
+        id:        { type: integer }
+        clientId:  { type: integer }
+        type:
+          type: string
+          enum: [admission, auction_winner, inclusion_proposal, penalty, item_rejected, info]
+        title:     { type: string }
+        message:   { type: string }
+        read:      { type: boolean }
+        createdAt: { type: string, format: date-time }
+        payload:
+          type: object
+          additionalProperties: true

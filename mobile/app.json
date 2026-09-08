@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Auctify",
+    "slug": "auctify",
+    "scheme": "auctify",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#1E3A8A"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.auctify.mobile"
+    },
+    "android": {
+      "package": "com.auctify.mobile"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Auctify necesita acceso a tus fotos para adjuntar el documento.",
+          "cameraPermission": "Auctify necesita la cámara para fotografiar tu documento."
+        }
+      ],
+      "expo-asset"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -1,0 +1,467 @@
+// Fuente de verdad del modelo de datos.
+//
+// NOTA SQLite: SQLite no soporta Prisma `enum` ni tipo Json nativo.
+// Los campos enum se modelan como String con comentarios listando valores permitidos.
+// Los campos JSON se modelan como String (se serializa/deserializa en el servicio).
+// Al migrar a PostgreSQL (Entrega 3) se reemplazarán sin cambios en la lógica.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAÍS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Country {
+  id          Int     @id @default(autoincrement())
+  name        String
+  shortName   String?
+  capital     String
+  nationality String
+  languages   String  // lista separada por comas
+
+  clients Client[]
+  owners  Owner[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PERSONAS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Postor / comprador de la subasta.
+model Client {
+  id              Int      @id @default(autoincrement())
+  /// DNI. Identificador de login. Único.
+  document        String   @unique
+  firstName       String
+  lastName        String
+  email           String?  @unique
+  passwordHash    String?
+  address         String?
+  photoUrl        String?
+  idCardFrontUrl  String?
+  idCardBackUrl   String?
+  countryId       Int?
+  /// admitted: false hasta que la empresa lo verifique
+  admitted        Boolean  @default(false)
+  /// category: common | special | silver | gold | platinum
+  category        String?
+  blocked         Boolean  @default(false)
+  active          Boolean  @default(true)
+  /// verifierId: operador que realizó la verificación
+  verifierId      Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  country          Country?          @relation(fields: [countryId], references: [id])
+  paymentMethods   PaymentMethod[]
+  activationTokens ActivationToken[]
+  attendees        Attendee[]
+  sessions         AuctionSession[]
+  notifications    Notification[]
+  penalties        Penalty[]
+  saleRecords      SaleRecord[]
+}
+
+/// Dueño / consignante de bienes para subastar.
+model Owner {
+  id                    Int     @id @default(autoincrement())
+  /// DNI. Único.
+  document              String  @unique
+  name                  String
+  address               String?
+  photoUrl              String?
+  active                Boolean @default(true)
+  countryId             Int?
+  financialVerification Boolean @default(false)
+  judicialVerification  Boolean @default(false)
+  /// riskRating: 1..6
+  riskRating            Int     @default(1)
+  verifierId            Int
+
+  country        Country?       @relation(fields: [countryId], references: [id])
+  payoutAccounts PayoutAccount[]
+  products       Product[]
+  inclusionRequests InclusionRequest[]
+  saleRecords    SaleRecord[]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MEDIOS DE COBRO / PAGO
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Medio de pago del cliente (banco, tarjeta, cheque certificado).
+model PaymentMethod {
+  id               Int      @id @default(autoincrement())
+  clientId         Int
+  /// type: bank_account | credit_card | certified_check
+  type             String
+  /// currency: ARS | USD
+  currency         String
+  detail           String
+  bank             String?
+  countryId        Int?
+  /// reservedAmount: monto del cheque certificado o monto reservado
+  reservedAmount   Float?
+  /// status: pending | verified | rejected
+  status           String   @default("pending")
+  rejectionReason  String?
+  createdAt        DateTime @default(now())
+
+  client Client   @relation(fields: [clientId], references: [id])
+  bids   Bid[]
+  saleRecords SaleRecord[]
+}
+
+/// Cuenta de cobro del dueño. Debe declararse ANTES del inicio de la subasta.
+model PayoutAccount {
+  id             Int      @id @default(autoincrement())
+  ownerId        Int
+  bank           String
+  countryId      Int?
+  /// currency: ARS | USD
+  currency       String
+  cbuOrIban      String
+  accountHolder  String
+  declaredAt     DateTime
+
+  owner Owner @relation(fields: [ownerId], references: [id])
+
+  @@index([ownerId, declaredAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUBASTA Y CATÁLOGO
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Evento de subasta.
+model Auction {
+  id               Int      @id @default(autoincrement())
+  startsAt         DateTime
+  /// status: scheduled | open | closed
+  status           String   @default("scheduled")
+  /// currency: ARS | USD
+  currency         String
+  /// category: common | special | silver | gold | platinum
+  category         String
+  auctioneerId     Int?
+  location         String?
+  attendeeCapacity Int?
+  hasWarehouse     Boolean  @default(false)
+  ownSecurity      Boolean  @default(false)
+  streamingUrl     String?
+  isCollection     Boolean  @default(false)
+  collectionName   String?
+  /// version: contador incremental para polling (sube con cada evento)
+  version          Int      @default(0)
+  /// currentItemId: ítem que se está rematando en este momento
+  currentItemId    Int?
+
+  catalog        Catalog?
+  attendees      Attendee[]
+  sessions       AuctionSession[]
+  events         AuctionEvent[]
+  saleRecords    SaleRecord[]
+  penalties      Penalty[]
+  currentItem    CatalogItem? @relation("CurrentItem", fields: [currentItemId], references: [id])
+
+  @@index([status, startsAt])
+  @@index([category])
+}
+
+/// Catálogo de la subasta (relación 1:1 con Auction).
+model Catalog {
+  id            Int    @id @default(autoincrement())
+  description   String
+  auctionId     Int    @unique
+  responsibleId Int
+
+  auction Auction       @relation(fields: [auctionId], references: [id])
+  items   CatalogItem[]
+}
+
+/// Bien físico subastado.
+model Product {
+  id                  Int     @id @default(autoincrement())
+  date                DateTime?
+  available           Boolean  @default(true)
+  catalogDescription  String?
+  fullDescription     String
+  reviewerId          Int?
+  ownerId             Int
+  insurancePolicy     String?
+  /// pieceCount: cantidad de piezas (ej. juego de 18)
+  pieceCount          Int      @default(1)
+  artist              String?
+  historicalDate      String?
+  history             String?
+
+  owner           Owner            @relation(fields: [ownerId], references: [id])
+  photos          Photo[]
+  location        ProductLocation?
+  catalogItems    CatalogItem[]
+  inclusionRequests InclusionRequest[]
+  saleRecords     SaleRecord[]
+}
+
+/// Foto de un producto (se requieren ≥ 6 para inclusión).
+model Photo {
+  id        Int    @id @default(autoincrement())
+  productId Int
+  photoUrl  String
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+}
+
+/// Ubicación física del producto (relación 1:1 con Product).
+model ProductLocation {
+  productId  Int      @id
+  warehouse  String
+  address    String
+  receivedAt DateTime
+
+  product Product @relation(fields: [productId], references: [id])
+}
+
+/// Seguro del producto.
+model Insurance {
+  policyNumber    String  @id
+  company         String
+  /// combinedPolicy: cubre varias piezas del mismo dueño
+  combinedPolicy  Boolean @default(false)
+  amount          Float
+
+  catalogItems CatalogItem[]
+}
+
+/// Ítem / Lote dentro de un catálogo.
+model CatalogItem {
+  id         Int     @id @default(autoincrement())
+  catalogId  Int
+  productId  Int
+  /// lotNumber: orden secuencial dentro de la subasta
+  lotNumber  Int
+  basePrice  Float
+  commission Float
+  /// status: pending | active | pending_confirmation | sold | unsold
+  status     String  @default("pending")
+  auctioned  Boolean @default(false)
+
+  /// insurancePolicy: FK opcional a Insurance.policyNumber
+  insurancePolicy String?
+
+  catalog    Catalog     @relation(fields: [catalogId], references: [id])
+  product    Product     @relation(fields: [productId], references: [id])
+  bids       Bid[]
+  insurance  Insurance?  @relation(fields: [insurancePolicy], references: [policyNumber])
+
+  /// Subastas que tienen este ítem como ítem actual
+  activeInAuctions Auction[] @relation("CurrentItem")
+
+  @@index([catalogId, status])
+  @@index([productId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PARTICIPACIÓN EN VIVO
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Registro de un cliente en una subasta (bidder number asignado).
+model Attendee {
+  id           Int @id @default(autoincrement())
+  auctionId    Int
+  clientId     Int
+  /// bidderNumber: asignado secuencialmente por el sistema
+  bidderNumber Int
+
+  auction Auction  @relation(fields: [auctionId], references: [id])
+  client  Client   @relation(fields: [clientId], references: [id])
+  bids    Bid[]
+
+  @@unique([auctionId, clientId])
+  @@unique([auctionId, bidderNumber])
+  @@index([clientId])
+}
+
+/// Conexión en vivo a la subasta. Invariante: un cliente tiene a lo sumo 1 sesión activa en todo el sistema.
+model AuctionSession {
+  id        Int      @id @default(autoincrement())
+  auctionId Int
+  clientId  Int
+  startedAt DateTime @default(now())
+  endedAt   DateTime?
+  active    Boolean   @default(true)
+
+  auction Auction @relation(fields: [auctionId], references: [id])
+  client  Client  @relation(fields: [clientId], references: [id])
+
+  @@index([clientId, active])
+  @@index([auctionId, active])
+}
+
+/// Puja sobre un ítem. Todas las pujas se guardan en orden (timestamp + id).
+model Bid {
+  id               Int      @id @default(autoincrement())
+  itemId           Int
+  attendeeId       Int
+  amount           Float
+  winner           Boolean  @default(false)
+  paymentMethodId  Int
+  /// idempotencyKey: garantiza que una puja no se duplique
+  idempotencyKey   String   @unique
+  timestamp        DateTime @default(now())
+
+  item          CatalogItem   @relation(fields: [itemId], references: [id])
+  attendee      Attendee      @relation(fields: [attendeeId], references: [id])
+  paymentMethod PaymentMethod @relation(fields: [paymentMethodId], references: [id])
+
+  @@index([itemId, amount(sort: Desc)])
+  @@index([itemId, timestamp(sort: Desc)])
+  @@index([itemId, winner])
+  @@index([attendeeId, winner])
+  @@index([attendeeId, timestamp(sort: Desc)])
+}
+
+/// Bitácora de eventos de la subasta (para polling live-status).
+/// Cada evento incrementa Auction.version.
+model AuctionEvent {
+  id        Int      @id @default(autoincrement())
+  auctionId Int
+  /// type: new_bid | item_opened | item_closed | item_sold | item_unsold | auction_ended
+  type      String
+  /// data: JSON serializado (String por limitación de SQLite)
+  data      String   @default("{}")
+  createdAt DateTime @default(now())
+
+  auction Auction @relation(fields: [auctionId], references: [id])
+
+  @@index([auctionId, createdAt(sort: Desc)])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INCLUSIÓN, VENTAS, MULTAS, NOTIFICACIONES
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Solicitud de inclusión de un producto en una subasta.
+model InclusionRequest {
+  id                   Int      @id @default(autoincrement())
+  ownerId              Int
+  productId            Int
+  itemDescription      String
+  /// ownershipDeclared: debe ser true para enviar
+  ownershipDeclared    Boolean  @default(false)
+  /// legalityDeclared: debe ser true para enviar
+  legalityDeclared     Boolean  @default(false)
+  /// status: pending | under_inspection | accepted | rejected | proposal_sent | proposal_rejected
+  status               String   @default("pending")
+  rejectionReason      String?
+  proposedBasePrice    Float?
+  proposedCommission   Float?
+  proposedAuctionId    Int?
+  returnShippingCost   Float?
+  createdAt            DateTime @default(now())
+
+  owner   Owner   @relation(fields: [ownerId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([ownerId, status])
+}
+
+/// Registro de venta generado por el sistema al cerrarse un ítem.
+model SaleRecord {
+  id              Int      @id @default(autoincrement())
+  auctionId       Int
+  ownerId         Int
+  productId       Int
+  /// clientId: null si la empresa compró el bien (nadie pujó)
+  clientId        Int?
+  amount          Float
+  commission      Float
+  shippingCost    Float?
+  /// pickupInPerson: si true, el cliente retira en persona y pierde el seguro
+  pickupInPerson  Boolean  @default(false)
+  shippingAddress String?
+  /// paymentMethodId: null en compras de la empresa (sin puja)
+  paymentMethodId Int?
+  /// boughtByCompany: true si nadie pujó y la empresa compró al precio base
+  boughtByCompany Boolean  @default(false)
+  /// insuranceCovered: false si el comprador retira en persona (pierde el seguro)
+  insuranceCovered Boolean @default(true)
+  /// paymentStatus: pending | paid | failed
+  paymentStatus   String   @default("pending")
+  paidAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  auction       Auction        @relation(fields: [auctionId], references: [id])
+  owner         Owner          @relation(fields: [ownerId], references: [id])
+  product       Product        @relation(fields: [productId], references: [id])
+  client        Client?        @relation(fields: [clientId], references: [id])
+  paymentMethod PaymentMethod? @relation(fields: [paymentMethodId], references: [id])
+
+  @@index([clientId])
+  @@index([auctionId])
+  @@index([ownerId])
+}
+
+/// Multa al cliente (10% del valor ofertado cuando no paga en 72hs).
+model Penalty {
+  id        Int      @id @default(autoincrement())
+  clientId  Int
+  auctionId Int
+  itemId    Int
+  amount    Float
+  /// status: pending | paid
+  status    String   @default("pending")
+  /// dueAt: plazo de 72hs para presentar los fondos; vencido → deriva a justicia
+  dueAt     DateTime?
+  createdAt DateTime @default(now())
+  paidAt    DateTime?
+
+  client  Client  @relation(fields: [clientId], references: [id])
+  auction Auction @relation(fields: [auctionId], references: [id])
+
+  @@index([clientId, status])
+  @@index([auctionId])
+}
+
+/// Notificación para el cliente.
+model Notification {
+  id       Int      @id @default(autoincrement())
+  clientId Int
+  /// type: admission | auction_winner | inclusion_proposal | penalty | item_rejected | info
+  type     String
+  title    String
+  message  String
+  read     Boolean  @default(false)
+  /// payload: JSON serializado (String por limitación de SQLite)
+  payload  String?
+  createdAt DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@index([clientId, read])
+  @@index([clientId, createdAt(sort: Desc)])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Token de activación emitido al admitir al cliente (etapa 2 del registro).
+model ActivationToken {
+  id        Int      @id @default(autoincrement())
+  clientId  Int
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  client Client @relation(fields: [clientId], references: [id])
+}

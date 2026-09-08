@@ -1,0 +1,17 @@
+# Configuración de pre-commit propia de este repo (proyecto personal / académico).
+#
+# NO contiene los checks corporativos de MercadoLibre: este repo no los necesita.
+# Existe sólo para que el hook global de `pre-commit` de la máquina encuentre una
+# configuración válida y PASE (en vez de fallar con "No .pre-commit-config.yaml found"),
+# sin necesidad de saltear hooks.
+#
+# El equipo puede sumar acá los checks que quiera (linters, formateadores, etc.).
+repos:
+  - repo: local
+    hooks:
+      - id: allow-commit
+        name: allow-commit (placeholder, sin checks)
+        entry: "true"
+        language: system
+        pass_filenames: false
+        always_run: true
