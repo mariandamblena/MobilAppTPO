@@ -1,6 +1,6 @@
 # Auctify — Grupo 03
 
-**TPO DAI · 1C 2026** — Juan Ignacio Molina · Joaquín Villamediana · Valentino Femia
+**TPO DAI · 1C 2026** — Mariano Dambolena · Guido Lauffer · Matias Krivitzki
 
 Auctify es una **app móvil de subastas en vivo** para una casa de remates de Buenos Aires. Dos perfiles
 conviven en la misma app: **postores**, que se registran, cargan un medio de pago y **pujan en vivo** sobre
