@@ -1,5 +1,5 @@
 /**
- * Barrel del theme de Auctify. Importar siempre desde `@/theme`:
+ * Barrel del theme de subastita. Importar siempre desde `@/theme`:
  *   import { colors, typography, spacing } from '@/theme';
  *
  * TODO: sincronizar TODOS los tokens (colores, tipografía, spacing) con el

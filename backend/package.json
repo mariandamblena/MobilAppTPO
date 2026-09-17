@@ -1,7 +1,7 @@
 {
-  "name": "auctify-backend",
+  "name": "subastita-backend",
   "version": "0.1.0",
-  "description": "Backend REST API de Auctify — app de subastas universitaria",
+  "description": "Backend REST API de subastita — app de subastas universitaria",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",

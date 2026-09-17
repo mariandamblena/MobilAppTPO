@@ -1,5 +1,5 @@
 /**
- * Auctify backend — exhaustive END-TO-END test driver.
+ * subastita backend — exhaustive END-TO-END test driver.
  *
  * Plain Node ESM, global fetch, no new deps. Drives the REAL API at
  * http://localhost:8080/v1 across every feature flow (F01–F11) and asserts
@@ -1289,7 +1289,7 @@ async function f10_penalties() {
 // Main
 // ─────────────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log("Auctify backend E2E\nBASE =", BASE, "\n");
+  console.log("subastita backend E2E\nBASE =", BASE, "\n");
 
   // sanity: server up
   try {

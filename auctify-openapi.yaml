@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
-  title: Auctify API
+  title: subastita API
   version: 1.0.0
   description: |
-    API REST para app mobile de subastas (Auctify).
+    API REST para app mobile de subastas (subastita).
 
     ## Errores
     Los errores de negocio devuelven el schema `Error` con un `code` del enum

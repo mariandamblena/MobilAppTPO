@@ -99,7 +99,7 @@ export default function InsuranceScreen() {
 
       <View style={styles.card}>
         <Text style={styles.cardLabel}>Ubicación</Text>
-        <Text style={styles.locationName}>Depósito Auctify</Text>
+        <Text style={styles.locationName}>Depósito subastita</Text>
       </View>
 
       <View style={styles.card}>

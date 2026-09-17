@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Auctify",
-    "slug": "auctify",
-    "scheme": "auctify",
+    "name": "subastita",
+    "slug": "subastita",
+    "scheme": ["subastita", "auctify"],
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -26,8 +26,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Auctify necesita acceso a tus fotos para adjuntar el documento.",
-          "cameraPermission": "Auctify necesita la cámara para fotografiar tu documento."
+          "photosPermission": "subastita necesita acceso a tus fotos para adjuntar el documento.",
+          "cameraPermission": "subastita necesita la cámara para fotografiar tu documento."
         }
       ],
       "expo-asset"

@@ -1,7 +1,7 @@
 import { Platform, type TextStyle } from 'react-native';
 
 /**
- * Tipografía de Auctify.
+ * Tipografía de subastita.
  *
  * ✅ EXTRAÍDA DEL FIGMA `Auctify - DA1`: **Manrope** (ExtraBold) para títulos +
  * **Inter** para cuerpo/UI + monoespaciada para timers.

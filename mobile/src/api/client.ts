@@ -1,5 +1,5 @@
 /**
- * API client tipado para Auctify.
+ * API client tipado para subastita.
  *
  * Caracteristicas:
  * - Base URL desde EXPO_PUBLIC_API_URL

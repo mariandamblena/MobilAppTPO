@@ -24,7 +24,7 @@ const PRIMARY_TABS: Record<string, { title: string; icon: IconPair }> = {
 };
 const PRIMARY_ORDER = ['index', 'subastas', 'items', 'profile'];
 
-function AuctifyTabBar({ state, navigation }: BottomTabBarProps) {
+function SubastitaTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const activeKey = state.routes[state.index]?.key;
   const activeName = state.routes[state.index]?.name;
@@ -72,7 +72,7 @@ export default function TabsLayout() {
 
   return (
     <AppDrawerContext.Provider value={{ openDrawer: () => setDrawerOpen(true) }}>
-      <Tabs tabBar={(props) => <AuctifyTabBar {...props} />} screenOptions={{ headerShown: false }}>
+      <Tabs tabBar={(props) => <SubastitaTabBar {...props} />} screenOptions={{ headerShown: false }}>
         <Tabs.Screen name="index" options={{ title: 'Home' }} />
         <Tabs.Screen name="subastas" options={{ title: 'Subastas' }} />
         <Tabs.Screen name="items" options={{ title: 'Vender' }} />

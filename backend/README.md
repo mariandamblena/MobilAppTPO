@@ -1,6 +1,6 @@
-# Auctify Backend
+# subastita Backend
 
-API REST del sistema de subastas Auctify. Construido con Node 24, Express 4, TypeScript 5, Prisma y SQLite.
+API REST del sistema de subastas subastita. Construido con Node 24, Express 4, TypeScript 5, Prisma y SQLite.
 
 ## Prerrequisitos
 

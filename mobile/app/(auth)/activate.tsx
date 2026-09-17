@@ -17,7 +17,7 @@ interface ActivateErrors {
 
 /**
  * Activacion de cuenta etapa 2 (F01).
- * Recibe el token del deep-link (scheme "auctify://activate?token=xxx")
+ * Recibe el token del deep-link (scheme "subastita://activate?token=xxx")
  * o el usuario lo escribe manualmente.
  * Al exito guarda el JWT y entra logueado directamente.
  */
@@ -25,7 +25,7 @@ export default function ActivateScreen() {
   const router = useRouter();
   const { activate } = useAuth();
 
-  // Soporte de deep-link: auctify://activate?token=act_abc123
+  // Soporte de deep-link: subastita://activate?token=act_abc123 (también acepta el esquema anterior).
   const params = useLocalSearchParams<{ token?: string }>();
 
   const [token, setToken] = useState(params.token ?? '');

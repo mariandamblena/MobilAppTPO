@@ -1,7 +1,7 @@
 import type { ViewStyle } from 'react-native';
 
 /**
- * Sombras de tarjetas de Auctify. Importar desde `@/theme`.
+ * Sombras de tarjetas de subastita. Importar desde `@/theme`.
  *
  * - `card`: sombra suave (cards de listas/notificaciones).
  * - `cardStrong`: sombra más marcada (cards destacadas del Home).

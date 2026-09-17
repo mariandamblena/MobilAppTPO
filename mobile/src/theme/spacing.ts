@@ -1,5 +1,5 @@
 /**
- * Escala de espaciado y radios de Auctify.
+ * Escala de espaciado y radios de subastita.
  *
  * ✅ EXTRAÍDA DEL FIGMA `Auctify - DA1`: spacing en múltiplos de 4 (4/8/16/24/32/40) y
  * radios 12/16/24/32/40 + pill.

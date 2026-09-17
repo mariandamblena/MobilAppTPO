@@ -1,5 +1,5 @@
 /**
- * Tipos TypeScript para los schemas MVP del OpenAPI de Auctify.
+ * Tipos TypeScript para los schemas MVP del OpenAPI de subastita.
  * Basados en auctify-openapi.yaml — solo se tipan los schemas relevantes al MVP.
  *
  */

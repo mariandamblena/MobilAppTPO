@@ -22,7 +22,7 @@ interface AppBarProps {
 
 /**
  * Barra superior global y unificada.
- * - Modo raíz (tabs): hamburguesa (abre drawer) + AUCTIFY + campana.
+ * - Modo raíz (tabs): hamburguesa (abre drawer) + subastita + campana.
  * - Modo subpantalla (`title`): ← atrás + título + acción. El atrás usa router.back()
  *   con fallback a la home si no hay historial (evita quedar sin salida).
  */
@@ -62,7 +62,7 @@ export function AppBar({ title, showBell = true, rightAction, onBack }: AppBarPr
         <Pressable onPress={openDrawer} hitSlop={8} accessibilityRole="button" accessibilityLabel="Abrir menú">
           <Feather name="menu" size={24} color={colors.brand.primary} />
         </Pressable>
-        <Text style={styles.wordmark}>AUCTIFY</Text>
+        <Text style={styles.wordmark}>subastita</Text>
       </View>
 
       {showBell ? (

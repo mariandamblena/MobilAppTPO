@@ -34,7 +34,7 @@ export function AppDrawer({ open, onClose }: { open: boolean; onClose: () => voi
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Cerrar menú" />
       <View style={[styles.panel, { paddingTop: insets.top + spacing.lg }]}>
         <View style={styles.header}>
-          <Text style={styles.wordmark}>AUCTIFY</Text>
+          <Text style={styles.wordmark}>subastita</Text>
           <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cerrar">
             <Feather name="x" size={24} color={colors.text.secondary} />
           </Pressable>

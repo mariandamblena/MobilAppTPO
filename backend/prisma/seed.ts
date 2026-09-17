@@ -1,7 +1,7 @@
 /**
  * Seed de desarrollo rico e idempotente.
  *
- * Cubre los flujos principales de Auctify sin borrar datos locales:
+ * Cubre los flujos principales de subastita sin borrar datos locales:
  * auth, clientes, duenios, medios de pago, subastas, catalogos, pujas,
  * ventas, multas, notificaciones, solicitudes de inclusion, seguros y cobros.
  */
@@ -270,11 +270,16 @@ async function ensureAuction(input: {
   isCollection?: boolean;
   collectionName?: string | null;
 }) {
+  // Reconocer los datos demo anteriores al cambio de marca evita duplicar
+  // subastas y sus relaciones cuando se vuelve a ejecutar el seed.
   const existing = await prisma.auction.findFirst({
     where: { location: input.location },
+  }) ?? await prisma.auction.findFirst({
+    where: { location: input.location.replace(/^subastita /, "Auctify ") },
   });
 
   const data = {
+    location: input.location,
     startsAt: input.startsAt,
     status: input.status,
     currency: input.currency,
@@ -292,12 +297,7 @@ async function ensureAuction(input: {
     return prisma.auction.update({ where: { id: existing.id }, data });
   }
 
-  return prisma.auction.create({
-    data: {
-      location: input.location,
-      ...data,
-    },
-  });
+  return prisma.auction.create({ data });
 }
 
 async function ensureCatalog(auctionId: number, description: string, responsibleId: number) {
@@ -719,14 +719,14 @@ async function syncAuctionVersion(auctionId: number) {
 }
 
 async function main() {
-  console.log("Seed Auctify: iniciando dataset demo...");
+  console.log("Seed subastita: iniciando dataset demo...");
 
   await seedCountries();
 
   const admin = await ensureClient({
     document: "00000001",
     firstName: "Admin",
-    lastName: "Auctify",
+    lastName: "subastita",
     email: "admin@auctify.dev",
     password: PASSWORDS.admin,
     address: "Av. Corrientes 1234, CABA",
@@ -1047,7 +1047,7 @@ async function main() {
     currency: "ARS",
     category: "silver",
     auctioneerId: admin.id,
-    location: "Auctify Live Room - Junio 2026",
+    location: "subastita Live Room - Junio 2026",
     attendeeCapacity: 120,
     hasWarehouse: true,
     ownSecurity: true,
@@ -1059,7 +1059,7 @@ async function main() {
     currency: "USD",
     category: "gold",
     auctioneerId: admin.id,
-    location: "Auctify USD Preview - Arte Internacional",
+    location: "subastita USD Preview - Arte Internacional",
     attendeeCapacity: 80,
     hasWarehouse: true,
     ownSecurity: true,
@@ -1071,7 +1071,7 @@ async function main() {
     currency: "ARS",
     category: "common",
     auctioneerId: admin.id,
-    location: "Auctify Archivo - Abril 2026",
+    location: "subastita Archivo - Abril 2026",
     attendeeCapacity: 100,
     hasWarehouse: true,
     ownSecurity: false,
@@ -1082,7 +1082,7 @@ async function main() {
     currency: "ARS",
     category: "platinum",
     auctioneerId: admin.id,
-    location: "Auctify Coleccion Lacroze - Julio 2026",
+    location: "subastita Coleccion Lacroze - Julio 2026",
     attendeeCapacity: 50,
     hasWarehouse: true,
     ownSecurity: true,
@@ -1123,7 +1123,7 @@ async function main() {
       reviewerId: admin.id,
       photos: photoSeed("paisaje-pampeano"),
       location: {
-        warehouse: "Deposito Auctify Norte - Sector A3",
+        warehouse: "Deposito subastita Norte - Sector A3",
         address: "Av. Del Libertador 7200, CABA",
         receivedAt: daysFromNow(-7),
       },
@@ -1139,7 +1139,7 @@ async function main() {
       reviewerId: admin.id,
       photos: photoSeed("bronce-yrurtia"),
       location: {
-        warehouse: "Deposito Auctify Norte - Sector B1",
+        warehouse: "Deposito subastita Norte - Sector B1",
         address: "Av. Del Libertador 7200, CABA",
         receivedAt: daysFromNow(-6),
       },
@@ -1155,7 +1155,7 @@ async function main() {
       reviewerId: admin.id,
       photos: photoSeed("plata-lopez"),
       location: {
-        warehouse: "Deposito Auctify Norte - Caja fuerte 2",
+        warehouse: "Deposito subastita Norte - Caja fuerte 2",
         address: "Av. Del Libertador 7200, CABA",
         receivedAt: daysFromNow(-5),
       },
@@ -1168,7 +1168,7 @@ async function main() {
       reviewerId: admin.id,
       photos: photoSeed("alfombra-kashan"),
       location: {
-        warehouse: "Deposito Auctify Norte - Sector Textiles",
+        warehouse: "Deposito subastita Norte - Sector Textiles",
         address: "Av. Del Libertador 7200, CABA",
         receivedAt: daysFromNow(-4),
       },
@@ -1228,7 +1228,7 @@ async function main() {
     reviewerId: admin.id,
     photos: photoSeed("usd-abstraction"),
     location: {
-      warehouse: "Auctify Bonded Storage - Sector USD",
+      warehouse: "subastita Bonded Storage - Sector USD",
       address: "Av. Del Libertador 7200, CABA",
       receivedAt: daysFromNow(-3),
     },
@@ -1253,7 +1253,7 @@ async function main() {
       reviewerId: admin.id,
       photos: photoSeed("lacroze-escritorio"),
       location: {
-        warehouse: "Deposito Auctify Norte - Sector Muebles",
+        warehouse: "Deposito subastita Norte - Sector Muebles",
         address: "Av. Del Libertador 7200, CABA",
         receivedAt: daysFromNow(-2),
       },
@@ -1268,7 +1268,7 @@ async function main() {
       reviewerId: admin.id,
       photos: photoSeed("lacroze-archivo"),
       location: {
-        warehouse: "Deposito Auctify Norte - Documentos",
+        warehouse: "Deposito subastita Norte - Documentos",
         address: "Av. Del Libertador 7200, CABA",
         receivedAt: daysFromNow(-2),
       },
@@ -1528,7 +1528,7 @@ async function main() {
       insurancePolicy: estatePolicy.policyNumber,
       photos: photoSeed("inclusion-accepted"),
       location: {
-        warehouse: "Deposito Auctify Norte - Sector Muebles",
+        warehouse: "Deposito subastita Norte - Sector Muebles",
         address: "Av. Del Libertador 7200, CABA",
         receivedAt: daysFromNow(-8),
       },
@@ -1701,7 +1701,7 @@ async function main() {
   ]);
 
   console.log("");
-  console.log("Seed Auctify completado.");
+  console.log("Seed subastita completado.");
   console.log(`Clientes: ${counts[0]} | Duenios: ${counts[1]} | Subastas: ${counts[2]} | Lotes: ${counts[3]}`);
   console.log(`Pujas: ${counts[4]} | Ventas: ${counts[5]} | Inclusiones: ${counts[6]} | Notificaciones: ${counts[7]} | Multas: ${counts[8]}`);
   console.log("");

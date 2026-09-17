@@ -62,7 +62,7 @@ export default function LoginScreen() {
 
   return (
     <ScreenContainer centered>
-      <Text style={styles.wordmark}>AUCTIFY</Text>
+      <Text style={styles.wordmark}>subastita</Text>
 
       <View style={styles.card}>
         <Text style={styles.title}>Bienvenido</Text>

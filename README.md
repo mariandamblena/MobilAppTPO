@@ -1,8 +1,8 @@
-# Auctify — Grupo 03
+# subastita — Grupo 03
 
 **TPO DAI · 1C 2026** — Mariano Dambolena · Guido Lauffer · Matias Krivitzki
 
-Auctify es una **app móvil de subastas en vivo** para una casa de remates de Buenos Aires. Dos perfiles
+subastita es una **app móvil de subastas en vivo** para una casa de remates de Buenos Aires. Dos perfiles
 conviven en la misma app: **postores**, que se registran, cargan un medio de pago y **pujan en vivo** sobre
 ítems de un catálogo; y **dueños/consignantes**, que **proponen artículos**, los envían al depósito y cobran
 una vez rematados. El comportamiento refleja el relevamiento (categorías de usuario, topes de puja, multas
@@ -12,6 +12,8 @@ del 10% por default, póliza de seguro, una sola subasta activa por usuario a la
 
 > Este repo es un **monorepo**: backend + app mobile + contrato OpenAPI.
 > La trazabilidad con el diseño es obligatoria (lo entregado debe coincidir con lo diseñado).
+
+La [validación de conceptos de DAI](docs/validacion-materia.md) documenta la cobertura del material de `Contexto`, las diferencias entre los cuatrimestres y las evidencias pendientes. El proyecto cubre buena parte de React Native; no acredita por sí solo todos los contenidos de Android nativo, Compose e IoT.
 
 ---
 

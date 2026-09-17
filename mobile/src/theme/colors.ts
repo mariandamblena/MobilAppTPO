@@ -1,5 +1,5 @@
 /**
- * Paleta de colores de Auctify.
+ * Paleta de colores de subastita.
  *
  * ✅ Tokens EXTRAÍDOS DEL FIGMA `Auctify - DA1` (pantalla "High-Fidelity: Home", node 35:1431).
  * Identidad: azul profundo de marca (#1e3a8a) + acento marrón cálido (martillo/madera de

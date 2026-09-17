@@ -24,7 +24,7 @@ interface ButtonProps {
 }
 
 /**
- * Botón estándar de Auctify.
+ * Botón estándar de subastita.
  * - `loading` muestra spinner y deshabilita (clave para "una puja a la vez", F05).
  * - Variantes: primary (azul), accent (marrón remate), outline (borde), ghost (sin fondo).
  */

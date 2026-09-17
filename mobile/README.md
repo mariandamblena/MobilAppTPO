@@ -1,7 +1,12 @@
-# Auctify Mobile
+# subastita Mobile
 
-App mobile del sistema de subastas Auctify (TPO DAI — 1C2026 · Grupo 03).
+App mobile del sistema de subastas subastita (TPO DAI — 1C2026 · Grupo 03).
 Construida con **Expo + expo-router + TypeScript**.
+
+El nombre visible y el slug de Expo son `subastita`. Los enlaces nuevos usan
+`subastita://`; el esquema anterior sigue admitido. El identificador nativo
+`com.auctify.mobile` y la clave de sesión se conservan para mantener compatibilidad.
+El nombre del archivo de Figma sigue siendo el de la referencia original.
 
 ## Prerequisitos
 
@@ -69,7 +74,7 @@ mobile/
 │   ├── hooks/
 │   │   └── usePolling.ts    # Hook de polling para live-status
 │   └── theme/
-│       ├── colors.ts        # Paleta Auctify
+│       ├── colors.ts        # Paleta subastita
 │       ├── typography.ts    # Escala tipografica legible (body >= 15-16)
 │       └── index.ts
 └── assets/
@@ -81,11 +86,14 @@ mobile/
 Los tokens exactos de color, tipografia y espaciado deben sincronizarse con el archivo
 **`Auctify - DA1.fig`** entregado en la Entrega 1.
 
-Los archivos en `src/theme/` contienen valores **placeholder** claramente marcados con
-`// TODO: sync exact values from Figma Auctify - DA1.fig`.
+Los archivos en `src/theme/` centralizan los tokens de color, tipografía, espaciado
+y sombras. Sus comentarios indican procedencia de Figma; la coincidencia visual
+con el archivo original debe comprobarse al revisar el diseño.
 
 ### Legibilidad de fuentes (correccion de la catedra)
 
 Las pantallas de alta fidelidad de la Entrega 1 fueron corregidas por exceso de contenido
-y riesgo de fuentes pequenas. Por ello, **el tema impone un minimo de 15px para cuerpo de
-texto y jamas baja de 13px** en ningun elemento. Ver `src/theme/typography.ts`.
+y riesgo de fuentes pequenas. Actualmente el tema usa cuerpo de 16, cuerpo pequeño
+de 14, etiquetas de 14, captions de 12 y overlines de 11; algunas pantallas usan
+etiquetas de 10. La legibilidad y el escalado requieren validación en dispositivos.
+Ver `src/theme/typography.ts` y la [revisión de accesibilidad](../docs/validacion-materia.md).

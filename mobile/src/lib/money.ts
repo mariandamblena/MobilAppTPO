@@ -1,5 +1,5 @@
 /**
- * Formateo de moneda de Auctify. Importar desde `@/lib/money`.
+ * Formateo de moneda de subastita. Importar desde `@/lib/money`.
  *
  * - `formatMoney`: importe completo con separadores de miles es-AR y prefijo de moneda
  *   (`$` para ARS, `US$` para USD). Ej: formatMoney(1234, 'ARS') → "$1.234".

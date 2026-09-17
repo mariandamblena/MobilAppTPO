@@ -5,7 +5,7 @@ import { fonts, spacing, radius } from '@/theme';
 
 /**
  * Splash de marca (Figma "Splash Screen"): degradé azul + tile translúcido con
- * gema + wordmark AUCTIFY + subtítulo. Renderizado por código (sin assets, para
+ * gema + wordmark subastita + subtítulo. Renderizado por código (sin assets, para
  * no dejar Expo Go en blanco). Se muestra durante la carga de fuentes y la
  * hidratación de sesión.
  */
@@ -20,7 +20,7 @@ export function SplashScreen() {
       <View style={styles.tile}>
         <Ionicons name="diamond" size={44} color="#FFFFFF" />
       </View>
-      <Text style={styles.wordmark}>AUCTIFY</Text>
+      <Text style={styles.wordmark}>subastita</Text>
       <Text style={styles.subtitle}>Galería de alta velocidad</Text>
     </LinearGradient>
   );

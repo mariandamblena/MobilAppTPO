@@ -10,7 +10,7 @@ import { invalidToken } from "./errors";
 const JWT_ALGORITHM = "HS256" as const;
 
 /**
- * Claims del JWT de Auctify.
+ * Claims del JWT de subastita.
  * No incluye PII: el DNI (document) se resuelve desde la DB vía `sub` cuando
  * hace falta (ver src/middleware/owner.ts).
  */
