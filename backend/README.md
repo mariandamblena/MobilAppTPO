@@ -41,7 +41,7 @@ Agregar en el `.env` local del backend y reiniciar el servidor:
 
 ```dotenv
 GEMINI_API_KEY=clave_privada_de_google_ai_studio
-GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_MODEL=gemini-3.5-flash-lite
 ```
 
 También se admite `GOOGLE_API_KEY` si no se define `GEMINI_API_KEY`. La configuración

@@ -7,7 +7,7 @@ const { configuration } = vi.hoisted(() => ({
   configuration: {
     GEMINI_API_KEY: "test-gemini-key",
     GOOGLE_API_KEY: "",
-    GEMINI_MODEL: "gemini-2.5-flash-lite",
+    GEMINI_MODEL: "gemini-3.5-flash-lite",
     JWT_SECRET: "photo-analysis-test-secret-only",
     JWT_EXPIRES_IN: "1h",
   },
@@ -38,7 +38,7 @@ function post(user = 10) {
 beforeEach(() => {
   configuration.GEMINI_API_KEY = "test-gemini-key";
   configuration.GOOGLE_API_KEY = "";
-  configuration.GEMINI_MODEL = "gemini-2.5-flash-lite";
+  configuration.GEMINI_MODEL = "gemini-3.5-flash-lite";
   fetchMock.mockReset();
   fetchMock.mockResolvedValue(reply());
   vi.stubGlobal("fetch", fetchMock);
@@ -66,7 +66,7 @@ describe("POST /v1/products/analyze-photo", () => {
     expect(response.body.message).toContain("Revisá");
     expect(fetchMock).toHaveBeenCalledOnce();
     const [url, options] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent");
+    expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent");
     expect(url).not.toContain(configuration.GEMINI_API_KEY);
     expect(options?.headers).toMatchObject({ "x-goog-api-key": "test-gemini-key" });
     const payload = JSON.parse(options?.body as string);
