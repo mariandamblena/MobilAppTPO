@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+// Optional, editable estimate in ARS; it never sets the auction's accepted base price.
+export const estimatedStartingPriceSchema = z.number().finite().positive().max(1_000_000_000).multipleOf(0.01);
+
 export const createProductSchema = z.object({
   body: z.object({
     fullDescription: z
@@ -8,6 +11,7 @@ export const createProductSchema = z.object({
     catalogDescription: z.string().optional(),
     date: z.string().optional(),
     pieceCount: z.coerce.number().int().positive().optional(),
+    estimatedStartingPrice: estimatedStartingPriceSchema.nullable().optional(),
     artist: z.string().optional(),
     historicalDate: z.string().optional(),
     history: z.string().optional(),
@@ -40,6 +44,7 @@ export const updateProductSchema = z.object({
     reviewerId: z.coerce.number().int().positive().optional(),
     insurancePolicy: z.string().optional(),
     pieceCount: z.coerce.number().int().positive().optional(),
+    estimatedStartingPrice: estimatedStartingPriceSchema.nullable().optional(),
     artist: z.string().optional(),
     historicalDate: z.string().optional(),
     history: z.string().optional(),

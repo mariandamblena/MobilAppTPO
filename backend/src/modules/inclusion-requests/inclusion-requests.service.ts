@@ -30,34 +30,70 @@ export interface CreateInclusionRequestInput {
   legalityDeclared: boolean;
 }
 
+const ACTIVE_REQUEST_STATUSES = ["pending", "under_inspection", "proposal_sent", "accepted"];
+
+// Serialize submissions in this process to avoid SQLite lock contention when
+// someone double-clicks or retries. The transaction below also takes a database
+// write lock before reading, so a second process cannot insert a duplicate.
+let submissionQueue: Promise<void> = Promise.resolve();
+
+async function serializeSubmission<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = submissionQueue;
+  let release!: () => void;
+  submissionQueue = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
+
 export async function createInclusionRequest(input: CreateInclusionRequestInput) {
   // 1. Validar declaraciones
   if (!input.ownershipDeclared || !input.legalityDeclared) {
     throw declarationRequired();
   }
 
-  // 2. Validar que el producto exista y sea del dueño
-  const product = await prisma.product.findUnique({
-    where: { id: input.productId },
-    include: { photos: { select: { id: true } } },
-  });
+  return serializeSubmission(() => prisma.$transaction(async (tx) => {
+    // Setting the primary key to its current value changes no product data.
+    // On SQLite this acquires the writer lock before the read/check/create.
+    await tx.product.updateMany({
+      where: { id: input.productId, ownerId: input.ownerId },
+      data: { id: input.productId },
+    });
 
-  if (!product) throw notFound("Producto");
-  if (product.ownerId !== input.ownerId) throw forbidden("No sos el dueño de este producto");
+    const product = await tx.product.findUnique({
+      where: { id: input.productId },
+      include: { photos: { select: { id: true } } },
+    });
+    if (!product) throw notFound("Producto");
+    if (product.ownerId !== input.ownerId) throw forbidden("No sos el dueño de este producto");
+    if (product.photos.length < 6) throw missingPhotos();
 
-  // 3. Validar ≥6 fotos
-  if (product.photos.length < 6) throw missingPhotos();
+    // Repeated submissions keep the original description and workflow state.
+    // Rejected requests remain in history and allow a new submission.
+    const existing = await tx.inclusionRequest.findFirst({
+      where: {
+        productId: input.productId,
+        ownerId: input.ownerId,
+        status: { in: ACTIVE_REQUEST_STATUSES },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    if (existing) return existing;
 
-  return prisma.inclusionRequest.create({
-    data: {
-      ownerId: input.ownerId,
-      productId: input.productId,
-      itemDescription: input.itemDescription,
-      ownershipDeclared: true,
-      legalityDeclared: true,
-      status: "pending",
-    },
-  });
+    return tx.inclusionRequest.create({
+      data: {
+        ownerId: input.ownerId,
+        productId: input.productId,
+        itemDescription: input.itemDescription,
+        ownershipDeclared: true,
+        legalityDeclared: true,
+        status: "pending",
+      },
+    });
+  }, { isolationLevel: "Serializable", maxWait: 10_000, timeout: 10_000 }));
 }
 
 export async function listInclusionRequests(filters: {

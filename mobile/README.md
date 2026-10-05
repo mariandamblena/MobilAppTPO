@@ -85,9 +85,18 @@ mobile/
 
 En **Vender → Nuevo artículo**, se puede tomar o adjuntar una imagen JPEG, PNG o
 WebP de hasta 10 MB antes de crear el borrador. La app pide al backend una sugerencia
-de título para el catálogo, descripción y cantidad de piezas. Los campos siguen
+de título para el catálogo, descripción, cantidad de piezas y precio de inicio
+orientativo en ARS. Los campos siguen
 siendo editables; las respuestas no reemplazan datos que el usuario haya escrito.
 Autoría, época, procedencia y declaraciones se completan manualmente.
+
+El precio es opcional y editable: la IA puede dejarlo vacío cuando no tenga una
+referencia suficiente. Es una orientación a revisar, no una tasación ni una
+garantía del precio de venta. Se acepta el formato argentino (`15000`, `15000,50`
+o `15.000,50`); `15.000` significa quince mil pesos. Los puntos separan miles y la
+coma separa hasta dos decimales. El importe debe ser mayor a cero y no superar
+ARS 1.000.000.000. El valor revisado se guarda como `estimatedStartingPrice` en
+el producto; las correcciones manuales no se reemplazan con otro análisis.
 
 El análisis usa `POST /products/analyze-photo`. La configuración de Gemini está en
 `backend/.env` (ver `backend/README.md`); ninguna clave va en `EXPO_PUBLIC_*`.

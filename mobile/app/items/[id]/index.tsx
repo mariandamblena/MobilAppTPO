@@ -95,6 +95,16 @@ export default function InclusionRequestDetailScreen() {
 
       <Text style={styles.description}>{request.itemDescription}</Text>
 
+      {request.product?.estimatedStartingPrice != null && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Precio de inicio sugerido (ARS)</Text>
+          <Text style={styles.sectionBody}>
+            {request.product.estimatedStartingPrice.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}
+          </Text>
+          <Text style={styles.sectionBody}>Importe orientativo sujeto a revisión antes de la subasta.</Text>
+        </View>
+      )}
+
       {/* Rechazo de inspección */}
       {request.status === 'rejected' && (
         <View style={styles.section}>

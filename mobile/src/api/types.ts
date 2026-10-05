@@ -343,6 +343,8 @@ export interface Product {
   catalogDescription?: string | null;
   date?: string | null;
   pieceCount: number;
+  /** Precio de inicio orientativo en ARS, sujeto a revisión. */
+  estimatedStartingPrice?: number | null;
   artist?: string | null;
   historicalDate?: string | null;
   history?: string | null;
@@ -365,6 +367,7 @@ export interface InclusionRequest {
   id: number;
   ownerId: number;
   productId: number;
+  product?: Product;
   itemDescription: string;
   ownershipDeclared: boolean;
   legalityDeclared: boolean;

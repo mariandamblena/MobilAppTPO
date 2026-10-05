@@ -198,6 +198,8 @@ model Product {
   insurancePolicy     String?
   /// pieceCount: cantidad de piezas (ej. juego de 18)
   pieceCount          Int      @default(1)
+  /// Precio orientativo de inicio en ARS, revisable; no es el precio base aprobado.
+  estimatedStartingPrice Float?
   artist              String?
   historicalDate      String?
   history             String?

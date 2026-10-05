@@ -867,8 +867,11 @@ paths:
       description: |
         Requiere sesión. Recibe una imagen JPEG, PNG o WebP de hasta 10 MiB y
         devuelve un borrador editable en español. No crea productos ni almacena
-        la foto. Solo sugiere descripción breve, descripción completa y cantidad
-        visible de piezas; autoría, época, procedencia y declaraciones son manuales.
+        la foto. Sugiere descripción breve, descripción completa, cantidad
+        visible de piezas y un precio de inicio orientativo en ARS (o null si no se
+        puede estimar); autoría, época, procedencia y declaraciones son manuales.
+        El precio no consulta cotizaciones actuales ni reemplaza la tasación o el
+        precio base aprobado. El usuario puede corregirlo o quitarlo al guardar.
         Requiere configurar Gemini en el backend. Máximo 6 análisis por minuto
         por usuario y 4 análisis simultáneos por instancia; timeout de 40 segundos.
       requestBody:
@@ -1694,6 +1697,7 @@ components:
         ownerId:             { type: integer, example: 18 }
         insurancePolicy:     { type: string, nullable: true, example: "POL-2026-0001" }
         pieceCount:          { type: integer, example: 18 }
+        estimatedStartingPrice: { $ref: '#/components/schemas/EstimatedStartingPrice' }
         artist:              { type: string, nullable: true }
         historicalDate:      { type: string, nullable: true }
         history:             { type: string, nullable: true }
@@ -1715,6 +1719,16 @@ components:
                 - $ref: '#/components/schemas/ProductLocation'
               nullable: true
 
+    EstimatedStartingPrice:
+      type: number
+      nullable: true
+      minimum: 0
+      exclusiveMinimum: true
+      maximum: 1000000000
+      multipleOf: 0.01
+      description: Precio de inicio orientativo y editable en ARS; null si no se puede estimar o se quita. No establece el precio base aprobado.
+      example: 7500
+
     ProductPhotoAnalysis:
       type: object
       required: [suggestions]
@@ -1722,7 +1736,7 @@ components:
         suggestions:
           type: object
           additionalProperties: false
-          required: [catalogDescription, fullDescription, pieceCount]
+          required: [catalogDescription, fullDescription, pieceCount, estimatedStartingPrice]
           properties:
             catalogDescription:
               type: string
@@ -1743,6 +1757,7 @@ components:
               nullable: true
               description: Cantidad de piezas visibles; null si no se puede determinar
               example: 1
+            estimatedStartingPrice: { $ref: '#/components/schemas/EstimatedStartingPrice' }
         message:
           type: string
           example: Revisá las sugerencias antes de guardar el artículo.
@@ -1759,6 +1774,7 @@ components:
         ownerId:            { type: integer }
         insurancePolicy:    { type: string }
         pieceCount:         { type: integer, default: 1 }
+        estimatedStartingPrice: { $ref: '#/components/schemas/EstimatedStartingPrice' }
         artist:             { type: string }
         historicalDate:     { type: string }
         history:            { type: string }
@@ -1773,6 +1789,7 @@ components:
         reviewerId:         { type: integer }
         insurancePolicy:    { type: string }
         pieceCount:         { type: integer }
+        estimatedStartingPrice: { $ref: '#/components/schemas/EstimatedStartingPrice' }
         artist:             { type: string }
         historicalDate:     { type: string }
         history:            { type: string }

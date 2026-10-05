@@ -33,9 +33,20 @@ El servidor queda disponible en: **`http://localhost:8080`**
 ## Autocompletar ficha desde una foto
 
 `POST /v1/products/analyze-photo` recibe una foto por multipart (`photo`) con JWT
-y devuelve `suggestions.catalogDescription`, `suggestions.fullDescription` y
-`suggestions.pieceCount` (entero o `null`). No crea el producto ni guarda la imagen.
+y devuelve `suggestions.catalogDescription`, `suggestions.fullDescription`,
+`suggestions.pieceCount` (entero o `null`) y `suggestions.estimatedStartingPrice`
+(número en **ARS** o `null`). No crea el producto ni guarda la imagen.
 El usuario revisa la sugerencia y después guarda su borrador por el flujo habitual.
+
+El precio sugerido es orientativo para iniciar una subasta, sin consultar precios
+actuales ni certificar autoría, materiales o autenticidad. Si no se puede estimar,
+queda vacío. El usuario puede corregirlo o quitarlo. `POST /products` y
+`PATCH /products/:id` aceptan `estimatedStartingPrice` como número positivo de hasta
+1.000.000.000, con hasta dos decimales, o `null`; omitirlo en un PATCH conserva el
+valor anterior. Se guarda en el producto, siempre en ARS, y **no modifica** el precio
+base aprobado del catálogo ni una propuesta de la empresa. La migración
+`20261005160000_product_estimated_starting_price` agrega una columna opcional y
+mantiene los artículos existentes sin estimación.
 
 Agregar en el `.env` local del backend y reiniciar el servidor:
 
@@ -58,7 +69,7 @@ son para este servidor de desarrollo; varias instancias requieren un limitador c
 Pruebas aisladas, sin base de datos ni consumo de la API:
 
 ```bash
-npm test -- tests/photo-analysis.test.ts
+npm test -- tests/photo-analysis.test.ts tests/products-price.test.ts
 ```
 
 ## Endpoints base

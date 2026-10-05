@@ -13,6 +13,7 @@ import type { Photo, Product } from '@/api/types';
 interface FormErrors {
   fullDescription?: string;
   pieceCount?: string;
+  estimatedStartingPrice?: string;
   general?: string;
 }
 
@@ -20,6 +21,7 @@ interface SuggestedFields {
   catalogDescription: string;
   fullDescription: string;
   pieceCount: string;
+  estimatedStartingPrice: string;
 }
 
 interface PhotoAnalysis {
@@ -27,6 +29,7 @@ interface PhotoAnalysis {
     catalogDescription: string;
     fullDescription: string;
     pieceCount: number | null;
+    estimatedStartingPrice: number | null;
   };
   message?: string;
 }
@@ -40,17 +43,28 @@ interface SelectedPhoto {
 type AnalysisStatus = 'idle' | 'loading' | 'success' | 'error';
 type SuggestedField = keyof SuggestedFields;
 
-const EMPTY_FIELDS: SuggestedFields = { catalogDescription: '', fullDescription: '', pieceCount: '1' };
-const SUGGESTED_FIELDS: SuggestedField[] = ['catalogDescription', 'fullDescription', 'pieceCount'];
+const EMPTY_FIELDS: SuggestedFields = { catalogDescription: '', fullDescription: '', pieceCount: '1', estimatedStartingPrice: '' };
+const SUGGESTED_FIELDS: SuggestedField[] = ['catalogDescription', 'fullDescription', 'pieceCount', 'estimatedStartingPrice'];
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const MAX_STARTING_PRICE = 1_000_000_000;
+// Argentine notation: dots group thousands, and a comma separates cents.
+// In particular, "15.000" means 15000; decimal-dot shorthand is rejected.
+const PRICE_PATTERN = /^(?:\d+|[1-9]\d{0,2}(?:\.\d{3})+)(?:,\d{1,2})?$/;
+
+function parseStartingPrice(value: string): number | null {
+  const text = value.trim();
+  if (!text) return null;
+  if (!PRICE_PATTERN.test(text)) return Number.NaN;
+  return Number(text.replace(/\./g, '').replace(',', '.'));
+}
 
 export default function NewItemScreen() {
   const router = useRouter();
 
   const [fields, setFields] = useState<SuggestedFields>({ ...EMPTY_FIELDS });
   const fieldsRef = useRef(fields);
-  const edits = useRef({ catalogDescription: 0, fullDescription: 0, pieceCount: 0 });
+  const edits = useRef({ catalogDescription: 0, fullDescription: 0, pieceCount: 0, estimatedStartingPrice: 0 });
   const generatedFields = useRef(new Set<SuggestedField>());
   const [artist, setArtist] = useState('');
   const [historicalDate, setHistoricalDate] = useState('');
@@ -129,18 +143,29 @@ export default function NewItemScreen() {
       if (!mounted.current || requestId !== analysisRequest.current) return;
 
       const suggestions = result.suggestions;
+      const suggestedPrice = suggestions.estimatedStartingPrice;
       const next = { ...fieldsRef.current };
       const values: Partial<SuggestedFields> = {
         catalogDescription: suggestions.catalogDescription,
         fullDescription: suggestions.fullDescription,
         ...(Number.isInteger(suggestions.pieceCount) && Number(suggestions.pieceCount) > 0
           ? { pieceCount: String(suggestions.pieceCount) } : {}),
+        estimatedStartingPrice: typeof suggestedPrice === 'number' && Number.isFinite(suggestedPrice)
+          && suggestedPrice > 0 && suggestedPrice <= MAX_STARTING_PRICE
+          ? suggestedPrice.toFixed(2).replace('.', ',') : '',
       };
       let applied = 0;
       for (const field of eligible) {
         // A response arriving while someone types must never replace their edits.
         if (edits.current[field] !== startingEdits[field]) continue;
         const value = values[field];
+        if (field === 'estimatedStartingPrice' && value === '') {
+          // No reliable estimate: leave this optional field blank, without
+          // discarding the other suggestions or a price entered manually.
+          next[field] = '';
+          generatedFields.current.delete(field);
+          continue;
+        }
         if (typeof value !== 'string' || !value.trim()) continue;
         next[field] = value.trim();
         generatedFields.current.add(field);
@@ -225,6 +250,12 @@ export default function NewItemScreen() {
     if (!fields.fullDescription.trim()) next.fullDescription = 'La descripción completa es obligatoria';
     const count = Number(fields.pieceCount);
     if (!Number.isSafeInteger(count) || count < 1) next.pieceCount = 'Ingresá una cantidad entera mayor a cero';
+    const price = parseStartingPrice(fields.estimatedStartingPrice);
+    if (fields.estimatedStartingPrice.trim() && !PRICE_PATTERN.test(fields.estimatedStartingPrice.trim())) {
+      next.estimatedStartingPrice = 'Usá puntos para miles y coma para hasta 2 decimales. Ej: 15.000,50';
+    } else if (price !== null && (!Number.isFinite(price) || price <= 0 || price > MAX_STARTING_PRICE)) {
+      next.estimatedStartingPrice = 'Ingresá un importe mayor a 0 y de hasta ARS 1.000.000.000, o dejalo vacío';
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -240,6 +271,7 @@ export default function NewItemScreen() {
       let productId = savedProductId.current;
       const retryingUpload = productId !== null;
       if (productId === null) {
+        const estimatedStartingPrice = parseStartingPrice(fields.estimatedStartingPrice);
         const product = await post<Product>('/products', {
           fullDescription: fields.fullDescription.trim(),
           ...(fields.catalogDescription.trim() && { catalogDescription: fields.catalogDescription.trim() }),
@@ -247,6 +279,7 @@ export default function NewItemScreen() {
           ...(historicalDate.trim() && { historicalDate: historicalDate.trim() }),
           ...(history.trim() && { history: history.trim() }),
           pieceCount: Number(fields.pieceCount),
+          ...(estimatedStartingPrice !== null && { estimatedStartingPrice }),
         });
         productId = product.id;
         savedProductId.current = product.id;
@@ -288,7 +321,7 @@ export default function NewItemScreen() {
       <View style={styles.photoCard}>
         <Text style={styles.photoTitle}>Empezá con una foto</Text>
         <Text style={styles.helper}>
-          Adjuntá una foto para sugerir el título, la descripción y las piezas visibles. También podés completar todo manualmente.
+          Adjuntá una foto para sugerir el título, la descripción, las piezas visibles y un precio de inicio orientativo. También podés completar todo manualmente.
         </Text>
         {photo ? (
           <Image source={{ uri: photo.uri }} style={styles.preview} resizeMode="contain" accessibilityLabel="Foto elegida para el artículo" />
@@ -346,6 +379,19 @@ export default function NewItemScreen() {
         keyboardType="numeric"
         editable={!locked}
       />
+
+      <Field
+        label="Precio de inicio sugerido (ARS)"
+        value={fields.estimatedStartingPrice}
+        onChangeText={(value) => changeField('estimatedStartingPrice', value)}
+        error={errors.estimatedStartingPrice}
+        placeholder="Opcional. Ej: 15.000,50"
+        keyboardType="decimal-pad"
+        editable={!locked}
+      />
+      <Text style={styles.manualNotice}>
+        Importe orientativo a partir de la foto, pendiente de revisión. No es una tasación ni garantiza el precio de venta. Podés modificarlo o dejarlo vacío. Usá coma para decimales.
+      </Text>
 
       <Text style={styles.manualNotice}>Completá autor, época y procedencia con información que conozcas. Estos datos no se deducen de la foto.</Text>
 

@@ -2,9 +2,16 @@ import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { Manrope_700Bold, Manrope_800ExtraBold } from '@expo-google-fonts/manrope';
-import { AuthProvider } from '@/auth/AuthContext';
+import { AuthProvider, useAuth } from '@/auth/AuthContext';
 import { OfflineBanner } from '@/components/OfflineBanner';
 import { SplashScreen } from '@/components/SplashScreen';
+
+function SessionNavigator() {
+  const { loading } = useAuth();
+  // Deep links and browser reloads must restore the token before screen effects fetch data.
+  if (loading) return <SplashScreen />;
+  return <Stack screenOptions={{ headerShown: false }} />;
+}
 
 /**
  * Root layout: carga las fuentes del diseño (Manrope + Inter, del Figma `Auctify - DA1`),
@@ -29,7 +36,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <Stack screenOptions={{ headerShown: false }} />
+        <SessionNavigator />
         <OfflineBanner />
       </AuthProvider>
     </SafeAreaProvider>

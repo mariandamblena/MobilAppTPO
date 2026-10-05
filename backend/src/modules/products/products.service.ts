@@ -11,6 +11,7 @@ export interface CreateProductInput {
   catalogDescription?: string;
   date?: string;
   pieceCount?: number;
+  estimatedStartingPrice?: number | null;
   artist?: string;
   historicalDate?: string;
   history?: string;
@@ -25,6 +26,7 @@ export async function createProduct(input: CreateProductInput) {
       catalogDescription: input.catalogDescription ?? null,
       date: input.date ? new Date(input.date) : null,
       pieceCount: input.pieceCount ?? 1,
+      estimatedStartingPrice: input.estimatedStartingPrice ?? null,
       artist: input.artist ?? null,
       historicalDate: input.historicalDate ?? null,
       history: input.history ?? null,
@@ -99,6 +101,7 @@ export interface UpdateProductInput {
   reviewerId?: number;
   insurancePolicy?: string;
   pieceCount?: number;
+  estimatedStartingPrice?: number | null;
   artist?: string;
   historicalDate?: string;
   history?: string;
@@ -131,6 +134,7 @@ export async function updateProduct(
       ...(input.reviewerId !== undefined ? { reviewerId: input.reviewerId } : {}),
       ...(input.insurancePolicy !== undefined ? { insurancePolicy: input.insurancePolicy } : {}),
       ...(input.pieceCount !== undefined ? { pieceCount: input.pieceCount } : {}),
+      ...(input.estimatedStartingPrice !== undefined ? { estimatedStartingPrice: input.estimatedStartingPrice } : {}),
       ...(input.artist !== undefined ? { artist: input.artist } : {}),
       ...(input.historicalDate !== undefined ? { historicalDate: input.historicalDate } : {}),
       ...(input.history !== undefined ? { history: input.history } : {}),
