@@ -81,10 +81,24 @@ mobile/
     └── README.md            # Instrucciones para exportar icon.png y splash.png desde Figma
 ```
 
+## Ficha sugerida desde una foto
+
+En **Vender → Nuevo artículo**, se puede tomar o adjuntar una imagen JPEG, PNG o
+WebP de hasta 10 MB antes de crear el borrador. La app pide al backend una sugerencia
+de título para el catálogo, descripción y cantidad de piezas. Los campos siguen
+siendo editables; las respuestas no reemplazan datos que el usuario haya escrito.
+Autoría, época, procedencia y declaraciones se completan manualmente.
+
+El análisis usa `POST /products/analyze-photo`. La configuración de Gemini está en
+`backend/.env` (ver `backend/README.md`); ninguna clave va en `EXPO_PUBLIC_*`.
+Si el servicio no está disponible, se puede reintentar o continuar con carga manual.
+Al guardar, la foto seleccionada se adjunta al producto y cuenta entre las seis
+imágenes requeridas por el flujo de inclusión existente.
+
 ## Diseno y Figma
 
 Los tokens exactos de color, tipografia y espaciado deben sincronizarse con el archivo
-**`Auctify - DA1.fig`** entregado en la Entrega 1.
+**[Subastita - DA1](https://www.figma.com/design/fv2HV2LNqdIZHDMi0PiAiM/Subastita---DA1)**.
 
 Los archivos en `src/theme/` centralizan los tokens de color, tipografía, espaciado
 y sombras. Sus comentarios indican procedencia de Figma; la coincidencia visual

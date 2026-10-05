@@ -18,6 +18,9 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("7d"),
   UPLOAD_DIR: z.string().default("uploads"),
   CORS_ORIGIN: z.string().default("*"),
+  GEMINI_API_KEY: z.string().trim().optional(),
+  GOOGLE_API_KEY: z.string().trim().optional(),
+  GEMINI_MODEL: z.string().regex(/^[a-zA-Z0-9._-]+$/).default("gemini-2.5-flash-lite"),
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),

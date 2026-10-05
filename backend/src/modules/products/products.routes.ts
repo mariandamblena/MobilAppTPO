@@ -22,6 +22,7 @@ import { createProductSchema, listProductsSchema, updateProductSchema } from "./
 import * as productsController from "./products.controller";
 import * as insuranceController from "../insurance/insurance.controller";
 import { env } from "../../config/env";
+import photoAnalysisRouter from "./photo-analysis.routes";
 
 const uploadDir = path.resolve(process.cwd(), env.UPLOAD_DIR);
 if (!fs.existsSync(uploadDir)) {
@@ -51,6 +52,9 @@ const idParam = z.object({
 });
 
 const router = Router();
+
+// No Owner/product is created while previewing AI suggestions.
+router.use(photoAnalysisRouter);
 
 // ── F06 — Gestión de productos (colección) ────────────────────────────────────
 

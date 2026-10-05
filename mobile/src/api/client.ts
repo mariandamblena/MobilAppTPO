@@ -11,6 +11,8 @@
  * El token se inyecta desde AuthContext via setTokenGetter().
  */
 
+import { Platform } from 'react-native';
+
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 // ─────────────── ApiError ───────────────
@@ -122,16 +124,20 @@ async function request<T>(
 // ─────────────── Multipart POST (registro de usuario) ───────────────
 
 /**
- * POST multipart/form-data para el registro (POST /auth/register).
- * Permite adjuntar archivos (imagenes de documento).
+ * POST multipart/form-data con archivos nativos o Blob en web.
+ * El análisis de fotos puede ampliar el timeout y cancelar solicitudes anteriores.
  */
 export async function postMultipart<T>(
   path: string,
   fields: Record<string, string | number>,
-  files: Record<string, { uri: string; name: string; type: string }>
+  files: Record<string, { uri: string; name: string; type: string }>,
+  options: { timeoutMs?: number; signal?: AbortSignal } = {}
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const cancel = () => controller.abort();
+  options.signal?.addEventListener('abort', cancel, { once: true });
+  if (options.signal?.aborted) controller.abort();
+  const timeoutId = setTimeout(cancel, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
   const token = _tokenGetter();
   const headers: Record<string, string> = {};
@@ -140,54 +146,67 @@ export async function postMultipart<T>(
   }
   // No setear Content-Type manualmente — fetch lo hace con el boundary correcto
 
-  const formData = new FormData();
-
-  for (const [key, value] of Object.entries(fields)) {
-    formData.append(key, String(value));
-  }
-
-  for (const [key, file] of Object.entries(files)) {
-    // React Native acepta { uri, name, type } como si fuera un Blob
-    formData.append(key, { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
-  }
-
-  let response: Response;
-
   try {
-    response = await fetch(`${getBaseUrl()}${path}`, {
+    const formData = new FormData();
+    for (const [key, value] of Object.entries(fields)) {
+      formData.append(key, String(value));
+    }
+
+    for (const [key, file] of Object.entries(files)) {
+      if (Platform.OS === 'web') {
+        // En web el objeto { uri } se serializa como texto; subir el Blob real.
+        const localFile = await fetch(file.uri, { signal: controller.signal });
+        if (!localFile.ok) {
+          throw new ApiError('FILE_READ_ERROR', 'No se pudo leer la foto seleccionada. Volvé a adjuntarla.', 0);
+        }
+        const blob = await localFile.blob();
+        formData.append(key, blob.type ? blob : new Blob([blob], { type: file.type }), file.name);
+      } else {
+        formData.append(key, { uri: file.uri, name: file.name, type: file.type } as unknown as Blob);
+      }
+    }
+
+    const response = await fetch(`${getBaseUrl()}${path}`, {
       method: 'POST',
       headers,
       body: formData,
       signal: controller.signal,
     });
+
+    if (response.status === 204) return undefined as T;
+
+    let responseBody: unknown;
+    try {
+      responseBody = await response.json();
+    } catch (err) {
+      if (controller.signal.aborted) throw err;
+      throw new ApiError('PARSE_ERROR', 'Respuesta inesperada del servidor.', response.status);
+    }
+
+    if (!response.ok) {
+      const errorBody = (responseBody ?? {}) as Partial<{ code: string; message: string; details: Record<string, unknown> }>;
+      throw new ApiError(
+        errorBody.code ?? 'UNKNOWN_ERROR',
+        errorBody.message ?? 'Algo salió mal.',
+        response.status,
+        errorBody.details
+      );
+    }
+
+    return responseBody as T;
   } catch (err) {
-    clearTimeout(timeoutId);
-    if ((err as Error).name === 'AbortError') {
+    if (options.signal?.aborted) {
+      throw new ApiError('CANCELLED', 'La solicitud fue cancelada.', 0);
+    }
+    if (controller.signal.aborted) {
       throw new ApiError('TIMEOUT', 'La solicitud tardó demasiado.', 0);
     }
+    if (err instanceof ApiError) throw err;
     throw new ApiError('NETWORK_ERROR', 'Error de red.', 0);
   } finally {
     clearTimeout(timeoutId);
+    options.signal?.removeEventListener('abort', cancel);
   }
-
-  let responseBody: unknown;
-  try {
-    responseBody = await response.json();
-  } catch {
-    throw new ApiError('PARSE_ERROR', 'Respuesta inesperada del servidor.', response.status);
-  }
-
-  if (!response.ok) {
-    const errorBody = responseBody as Partial<{ code: string; message: string; details: Record<string, unknown> }>;
-    throw new ApiError(
-      errorBody.code ?? 'UNKNOWN_ERROR',
-      errorBody.message ?? 'Algo salió mal.',
-      response.status,
-      errorBody.details
-    );
-  }
-
-  return responseBody as T;
 }
 
 // ─────────────── Helpers publicos ───────────────

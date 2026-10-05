@@ -30,6 +30,37 @@ npm run dev
 
 El servidor queda disponible en: **`http://localhost:8080`**
 
+## Autocompletar ficha desde una foto
+
+`POST /v1/products/analyze-photo` recibe una foto por multipart (`photo`) con JWT
+y devuelve `suggestions.catalogDescription`, `suggestions.fullDescription` y
+`suggestions.pieceCount` (entero o `null`). No crea el producto ni guarda la imagen.
+El usuario revisa la sugerencia y después guarda su borrador por el flujo habitual.
+
+Agregar en el `.env` local del backend y reiniciar el servidor:
+
+```dotenv
+GEMINI_API_KEY=clave_privada_de_google_ai_studio
+GEMINI_MODEL=gemini-2.5-flash-lite
+```
+
+También se admite `GOOGLE_API_KEY` si no se define `GEMINI_API_KEY`. La configuración
+es opcional: sin clave la app sigue funcionando y el análisis responde 503 con un
+mensaje para continuar manualmente. Nunca poner la clave en `mobile/.env`, variables
+`EXPO_PUBLIC_*`, Git ni URLs. Los datos de la foto se envían a Gemini; revisar las
+[condiciones del nivel gratuito](https://ai.google.dev/gemini-api/docs/pricing).
+
+El endpoint valida JPEG/PNG/WebP, firma y tamaño (10 MiB), limita a 6 solicitudes por
+minuto y una simultánea por usuario, y a 4 simultáneas por proceso. Espera hasta 40 s.
+No deduce autoría, época, procedencia ni declaraciones legales. Los límites locales
+son para este servidor de desarrollo; varias instancias requieren un limitador compartido.
+
+Pruebas aisladas, sin base de datos ni consumo de la API:
+
+```bash
+npm test -- tests/photo-analysis.test.ts
+```
+
 ## Endpoints base
 
 | Ruta | Descripción |

@@ -8,7 +8,7 @@ conviven en la misma app: **postores**, que se registran, cargan un medio de pag
 una vez rematados. El comportamiento refleja el relevamiento (categorías de usuario, topes de puja, multas
 del 10% por default, póliza de seguro, una sola subasta activa por usuario a la vez).
 
-🎨 **Diseño (Figma):** https://www.figma.com/design/jAhnt4cbFjnNdgULvkhfzU/Auctify---DA1
+🎨 **Diseño (Figma):** https://www.figma.com/design/fv2HV2LNqdIZHDMi0PiAiM/Subastita---DA1
 
 > Este repo es un **monorepo**: backend + app mobile + contrato OpenAPI.
 > La trazabilidad con el diseño es obligatoria (lo entregado debe coincidir con lo diseñado).
